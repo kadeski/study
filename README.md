@@ -32,6 +32,14 @@ To see the `/study` plan as a task list on models newer than Opus 4.7, Sonnet 4.
 
 Pictures and demos are saved in the goal's folder and opened in your browser. If Python Playwright is installed, Claude checks them by rendering them first; otherwise it says it skipped the check.
 
+## What it runs and where your data goes
+
+- Everything Study saves stays in your data folder on your computer: your goals and plans, your answers and the messages you type during a Study session, and the knowledge graph. The plugin's own code sends none of it anywhere. Delete the folder to remove it.
+- A small MCP server runs on your computer with `python3`. It reads and writes only the data folder.
+- Hooks run on each message you send and each multiple-choice answer, in every Claude Code session. Outside a Study session they exit at once and do nothing. During one, they save your answers and messages to the data folder.
+- Helper agents run in the background during a lesson. The researcher checks facts with Claude's web search and web fetch tools, so its search terms leave your computer the way any web search does. The PDF reader reads PDFs you give it. The picture and demo helpers write files to the goal's folder.
+- `/graph` builds a page that works offline and opens it in your browser.
+
 ## License
 
 MIT. See [LICENSE](LICENSE). The method follows ideas from [LearnHarness](https://github.com/amosblomqvist/learnharness); no text or code is copied from it.

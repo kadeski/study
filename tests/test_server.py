@@ -857,7 +857,7 @@ class SourceAndPageTest(ServerTest):
         self.assertIn("force must be true or false", self.bad("register_source", path=str(notes), force="yes"))
 
     def test_read_session(self):
-        self.assertIn("pass goal_id, log_id", self.bad("read_session"))
+        self.assertIn("give goal_id, log_id", self.bad("read_session"))
         practice = self.ok("start_session", session_id=SID, mode="practice")["session"]["log"]
         out = self.ok("read_session", log_id=practice)
         self.assertEqual((out["goal"], out["log"], out["entries"][0]["type"]), (None, practice, "start"))

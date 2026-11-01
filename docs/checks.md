@@ -30,3 +30,12 @@ Run by a person on 2026-11-01, in the desktop app's Code tab and in the terminal
 - **"Other":** the typed text is the answer string, in both apps.
 - Replaying the captured inputs through `log_hook.py` graded the multi-select answer, logged the "Other" text as `other` and logged `notes` as null.
 - The terminal session also returned one answer in the desktop shape (a list, no `annotations`). Where it was answered is unclear; the hook handles both shapes.
+
+## Plugin directory validation
+
+Run in the developer portal on 2026-11-01. From `plugins/study` in kadeski/skills, validation passed with two policy holds, each of which sends every version to a reviewer:
+
+- **Scripts the validator couldn't follow** (`scripts/log_hook.py`): in a subfolder of a larger repository the validator follows only plain shell scripts, and the hooks run a Python script.
+- **Uses a credential from the user's machine** (`MCP_FORWARDS_CREDENTIAL_ENV`): the scan read two error messages that told the caller to "pass" a goal id as reading a credential, and the demo-builder prompt's mention of web addresses as sending data off the machine, and held the pair.
+
+The same plugin at the root of a repository, with "give" in those messages and the prompt reworded, validated with neither hold. So Study moved to its own repository, kadeski/study, with its history.

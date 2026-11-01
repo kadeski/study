@@ -614,7 +614,7 @@ class Server:
             if topic is not None:
                 problems.append("topic is for practice sessions; leave it out for study")
             if goal_text is not None and goal_id is not None:
-                problems.append("pass goal_id to open a goal or goal_text to create one, not both")
+                problems.append("give goal_id to open a goal or goal_text to create one, not both")
             elif title is not None and goal_text is None:
                 problems.append("title only goes with goal_text, when creating a goal")
             if goal_id is not None and not isinstance(self.store.read_goal(goal_id), dict):
@@ -1165,7 +1165,7 @@ class Server:
 
     def tool_read_session(self, goal_id=None, log_id=None):
         if goal_id is None and log_id is None:
-            raise ToolError("pass goal_id, log_id, or both (goal_id left out with a log_id reads a practice log)")
+            raise ToolError("give goal_id, log_id, or both (goal_id left out with a log_id reads a practice log)")
         if goal_id is not None:
             self._goal(goal_id)
         if log_id is None:

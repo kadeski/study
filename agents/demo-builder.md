@@ -19,7 +19,7 @@ Write only `output`. Don't touch anything else in `media/`.
 
 ## The demo
 
-- One self-contained file that works offline. All CSS and JavaScript inline. No `http` or `https` URLs anywhere: no CDN scripts, web fonts or remote images. Pictures are inline SVG. The render check blocks network requests and reports each one.
+- One self-contained file that works offline. All CSS and JavaScript inline. No web addresses anywhere: no CDN scripts, web fonts or remote images. Pictures are inline SVG. The render check blocks network requests and reports each one.
 - One idea, the brief's. The learner changes one or two things and sees the effect at once. A line at the top says what to try. Every control and readout has a plain-word label.
 - The page opens showing the idea already, with sensible starting values, not an empty canvas: the render check sees only the starting state.
 - Correct before pretty: the math, units and behavior must be right, because the demo teaches. No console errors.
