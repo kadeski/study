@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-SHOT = Path(__file__).resolve().parents[2] / "plugins" / "study" / "scripts" / "shot.py"
+SHOT = Path(__file__).resolve().parents[1] / "scripts" / "shot.py"
 
 # Runs shot.py the way `python3 -I` does, with Playwright hidden: a None entry in
 # sys.modules makes `import playwright` raise ImportError even where it is installed.

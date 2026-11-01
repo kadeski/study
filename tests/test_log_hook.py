@@ -8,7 +8,7 @@ import time
 import unittest
 from pathlib import Path
 
-PLUGIN = Path(__file__).resolve().parents[2] / "plugins" / "study"
+PLUGIN = Path(__file__).resolve().parents[1]
 SERVER = PLUGIN / "server"
 HOOK = PLUGIN / "scripts" / "log_hook.py"
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "hook"

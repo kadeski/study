@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-SERVER = Path(__file__).resolve().parents[2] / "plugins" / "study" / "server"
+SERVER = Path(__file__).resolve().parents[1] / "server"
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "graph" / "data.json"
 sys.path.insert(0, str(SERVER))
 

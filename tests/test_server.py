@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
-SERVER = Path(__file__).resolve().parents[2] / "plugins" / "study" / "server"
+SERVER = Path(__file__).resolve().parents[1] / "server"
 sys.path.insert(0, str(SERVER))
 
 import store  # noqa: E402

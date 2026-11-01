@@ -10,22 +10,22 @@ Each slice owns its files and touches nothing else. Everything not listed is the
 
 | Slice | Owns |
 |---|---|
-| server | `plugins/study/server/study_mcp.py`, `tests/study/test_server.py` |
-| hook | `plugins/study/scripts/log_hook.py`, `plugins/study/hooks/hooks.json`, `tests/study/test_log_hook.py`, `tests/study/fixtures/hook/` |
-| graph page | `plugins/study/server/graph_page.py` (replace the stub), `plugins/study/skills/graph/SKILL.md`, `tests/study/test_graph_page.py`, `tests/study/fixtures/graph/` |
-| teach | `plugins/study/skills/study/` (all six files), `plugins/study/agents/extractor.md` |
-| practice | `plugins/study/skills/practice/`, `plugins/study/skills/import-notes/`, `plugins/study/skills/record/` |
-| helpers | `plugins/study/agents/researcher.md`, `pdf-reader.md`, `visual-maker.md`, `demo-builder.md`, `plugins/study/scripts/shot.py`, `tests/study/test_shot.py` |
+| server | `server/study_mcp.py`, `tests/test_server.py` |
+| hook | `scripts/log_hook.py`, `hooks/hooks.json`, `tests/test_log_hook.py`, `tests/fixtures/hook/` |
+| graph page | `server/graph_page.py` (replace the stub), `skills/graph/SKILL.md`, `tests/test_graph_page.py`, `tests/fixtures/graph/` |
+| teach | `skills/study/` (all six files), `agents/extractor.md` |
+| practice | `skills/practice/`, `skills/import-notes/`, `skills/record/` |
+| helpers | `agents/researcher.md`, `pdf-reader.md`, `visual-maker.md`, `demo-builder.md`, `scripts/shot.py`, `tests/test_shot.py` |
 
-The base owns `store.py`, `tests/study/test_store.py`, the manifests, `README.md` files, `scripts/check.sh`, the marketplace, and `docs/study/`. Don't edit them. If `store.py` has a bug or lacks something, work around it in your own file and report it with a failing case.
+The base owns `store.py`, `tests/test_store.py`, the manifests, `README.md` files, `dev/check.sh`, the marketplace, and `docs/`. Don't edit them. If `store.py` has a bug or lacks something, work around it in your own file and report it with a failing case.
 
 Rules for every slice:
 
 - Python: 3.9 or newer, standard library only. No `match`, no `X | Y` types, no `datetime.UTC`, no `zip(strict=)`. Run your tests with both `python3` and `/usr/bin/python3` (3.9.6 on this Mac).
 - Entry scripts run as `python3 -I <script>`, so they add the plugin's `server/` folder to `sys.path` themselves before `import store`: `sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server"))` from `scripts/`, or the script's own folder from `server/`.
-- Tests import from `plugins/study/server` the way `tests/study/test_store.py` does, and each test file is self-contained (no shared helper module).
-- Style (from `AGENTS.md`): simple terms, plain dashes, never em dashes, no filler. Comments as dense as `store.py`'s.
-- Before each commit: `scripts/check.sh` passes (the pre-commit hook runs it). No attribution lines in commit messages.
+- Tests import from `server` the way `tests/test_store.py` does, and each test file is self-contained (no shared helper module).
+- Style (from `CLAUDE.md`): simple terms, plain dashes, never em dashes, no filler. Comments as dense as `store.py`'s.
+- Before each commit: `dev/check.sh` passes (the pre-commit hook runs it). No attribution lines in commit messages.
 - Commit on your own branch. Don't push, don't open a PR, don't merge.
 
 ## 2. Session ids
@@ -110,7 +110,7 @@ Use `store.now()` times, `store.open_question` for the open question, `store.gra
 
 The hook owns these messages; the skills tell the teacher how to read them. Output is `{"hookSpecificOutput": {"hookEventName": "<event>", "additionalContext": "<text>"}}`.
 
-Registration: `plugins/study/hooks/hooks.json`, plugin-wide, because skill frontmatter hooks don't get the data folder, don't survive a resume and don't fire on compaction (`checks.md`). It registers `python3 -I "${CLAUDE_PLUGIN_ROOT}/scripts/log_hook.py" <answer|prompt|compact>` for PostToolUse with matcher `AskUserQuestion`, UserPromptSubmit, and SessionStart with matcher `compact`, in exec form (`"command": "python3"` with `args`, as the hooks docs advise when a path placeholder appears) and a 10 second timeout. Every Claude Code session with the plugin enabled runs it, so with no live marker it must exit fast and silent. The data folder is `store.resolve_data_dir()` (the env var, else `~/Study`).
+Registration: `hooks/hooks.json`, plugin-wide, because skill frontmatter hooks don't get the data folder, don't survive a resume and don't fire on compaction (`checks.md`). It registers `python3 -I "${CLAUDE_PLUGIN_ROOT}/scripts/log_hook.py" <answer|prompt|compact>` for PostToolUse with matcher `AskUserQuestion`, UserPromptSubmit, and SessionStart with matcher `compact`, in exec form (`"command": "python3"` with `args`, as the hooks docs advise when a path placeholder appears) and a 10 second timeout. Every Claude Code session with the plugin enabled runs it, so with no live marker it must exit fast and silent. The data folder is `store.resolve_data_dir()` (the env var, else `~/Study`).
 
 Prompts the learner didn't type also reach UserPromptSubmit, for example a background agent's `<task-notification>…</task-notification>`. A prompt that is one XML-like element (it starts with `<name` and ends with `</name>`, after trimming) is not logged and never linked to a question. A slash command such as `/study stop` is logged as `learner` but never linked.
 
@@ -156,6 +156,6 @@ Builders call it for a desktop width and again with `--width 390`, and with `--d
 
 ## 9. Agents
 
-Plugin agents live in `plugins/study/agents/` and have `model: sonnet` and `background: true`. They name Study tools by full name, for example `mcp__plugin_study_study__graph_find`; a background plugin agent can call them (`checks.md`). Each one's final message is its result: short, no preamble.
+Plugin agents live in `agents/` and have `model: sonnet` and `background: true`. They name Study tools by full name, for example `mcp__plugin_study_study__graph_find`; a background plugin agent can call them (`checks.md`). Each one's final message is its result: short, no preamble.
 
 `${CLAUDE_PLUGIN_ROOT}` is not relied on inside agent files. The teacher's spawn prompt for visual-maker and demo-builder gives `plugin root: <path>` (from the skill's `${CLAUDE_PLUGIN_ROOT}`), `output: <abs path>` and the brief; the builders run `python3 -I <plugin root>/scripts/shot.py`. The extractor's spawn prompt gives `goal`, `log` and `step` ids and the step's teaching text copied as taught (or `source` id and `path` for notes).

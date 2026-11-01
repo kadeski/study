@@ -10,7 +10,7 @@ It rebuilds the method of [LearnHarness](https://github.com/amosblomqvist/learnh
 
 | Topic | Decision |
 |---|---|
-| Home | New plugin `plugins/study/` in kadeski. Claude-only: listed only in `.claude-plugin/marketplace.json` and the README. |
+| Home | Its own repository, kadeski/study, with the plugin at the root. Claude-only: listed in the kadeski marketplace (kadeski/skills) and the Anthropic plugin directory. |
 | License | MIT. Method and ideas from LearnHarness, no copied text or code. |
 | Question UI | The normal chat plus AskUserQuestion. Works in the terminal, the desktop app and VS Code. |
 | v1 scope | Probe, plan, teach; knowledge graph; practice; background helpers (research, PDF, visual, demo). |
@@ -29,7 +29,7 @@ It rebuilds the method of [LearnHarness](https://github.com/amosblomqvist/learnh
 | Self-check | Builders render and inspect their output when Playwright is installed; otherwise they skip the check and say so. |
 | Helper models | Every helper subagent uses `model: sonnet`. The teacher uses the session's model. |
 | Review | Practice keeps a due list. No reminders run outside a session. |
-| Release | kadeski marketplace only. The Anthropic plugin directory comes later. |
+| Release | The kadeski marketplace and the Anthropic plugin directory. |
 | Testing | Unit tests for the deterministic parts in v1. Skill evals after real use. |
 
 ### Defaults this spec adds
@@ -44,7 +44,7 @@ These were not discussed. Change any of them before building.
 - Logging stops with `end_session` (`/study stop`), `finish_goal`, or a marker idle for 24 hours.
 - At most 3 helper subagents at a time.
 - The review intervals in section 8.
-- Tests live in `tests/study/` and `scripts/check.sh` runs them.
+- Tests live in `tests/` and `dev/check.sh` runs them.
 
 ## 2. The method, in our words
 
@@ -127,7 +127,7 @@ Plain words, short sentences, plain dashes. No praise and no hedging. A wrong an
 ## 3. Plugin layout
 
 ```
-plugins/study/
+study/                         the repository root
   .claude-plugin/plugin.json
   .mcp.json
   README.md
@@ -161,7 +161,7 @@ plugins/study/
     shot.py                    headless render check (section 7)
 ```
 
-Tests stay out of the plugin, in `tests/study/`.
+The repository root is the plugin, so `tests/`, `docs/` and `dev/` (the checks and the pre-commit hook) ship with it. From a subfolder of a larger repository, the plugin directory holds every version for a reviewer, because it can't follow the hook's Python script (`checks.md`).
 
 `plugin.json`:
 
@@ -507,14 +507,14 @@ Python 3.9 or newer, standard library only, MCP over stdio. Every tool checks it
 
 ## 11. Repo changes
 
-- **Code:** `plugins/study/` as in section 3.
-- **Listing:** an entry in `.claude-plugin/marketplace.json` only (Claude-only), and a line in `README.md`.
-- **Tests:** `tests/study/`, run with `python3 -m unittest discover tests/study`, and by `scripts/check.sh`. They cover:
+- **Code:** the repository root, as in section 3.
+- **Listing:** an entry in kadeski/skills' `.claude-plugin/marketplace.json` that points at this repository (Claude-only), and the Anthropic plugin directory, which tracks `main`.
+- **Tests:** `tests/`, run with `python3 -m unittest discover -s tests`, and by `dev/check.sh`. They cover:
   - `store.py`: atomic writes, appends under the lock, folding the graph log, refusing a newer format
   - every server check in section 9, including plan cycles, a key that isn't an option, a second open question and merge dedupe
   - `log_hook.py`: no marker or a stale one means no output; matching an answer to its question; logging an unmatched answer as `ask`; multiple-choice grading; linking a free-text answer
   - `graph_page.py`: builds from a fixture, and the output holds no `http` URL
-- **Versions:** 0.1.0 until the first real use, 1.0.0 after.
+- **Versions:** 0.1.0 until the first real use, 1.0.0 after. Raise it with every release: the marketplace and the directory both read it.
 
 ## 12. Check before building
 
@@ -541,7 +541,7 @@ Run these in a scratch copy of the plugin loaded with `claude --plugin-dir`. Eac
 6. `/practice` and the due list.
 7. researcher, pdf-reader, visual-maker and demo-builder, with `shot.py`.
 8. `/import-notes` and `record`.
-9. README, LICENSE, marketplace entry, `scripts/check.sh`, release 0.1.0.
+9. README, LICENSE, marketplace entry, the repo checks, release 0.1.0.
 
 ## 14. Later
 
