@@ -39,3 +39,5 @@ Run in the developer portal on 2026-11-01. From `plugins/study` in kadeski/skill
 - **Uses a credential from the user's machine** (`MCP_FORWARDS_CREDENTIAL_ENV`): the scan read two error messages that told the caller to "pass" a goal id as reading a credential, and the demo-builder prompt's mention of web addresses as sending data off the machine, and held the pair.
 
 The same plugin at the root of a repository, with "give" in those messages and the prompt reworded, validated with neither hold. So Study moved to its own repository, kadeski/study, with its history.
+
+With tests, docs and dev tooling at the root too, the scan held the plugin again: a test copies the environment for the hook it runs, and the check script runs inline Python, which it read as a credential leaving the machine. It also warned that a root `CLAUDE.md` isn't loaded and that `spec.md` holds a download-and-run pattern. So the directory and the marketplace read a `release` branch that leaves those files out (`dev/release.sh`).

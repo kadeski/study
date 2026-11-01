@@ -129,6 +129,7 @@ Plain words, short sentences, plain dashes. No praise and no hedging. A wrong an
 ```
 study/                         the repository root
   .claude-plugin/plugin.json
+  .claude-plugin/icon.png       directory listing icon, drawn from dev/icon.svg
   .mcp.json
   README.md
   LICENSE                      MIT
@@ -161,7 +162,7 @@ study/                         the repository root
     shot.py                    headless render check (section 7)
 ```
 
-The repository root is the plugin, so `tests/`, `docs/` and `dev/` (the checks and the pre-commit hook) ship with it. From a subfolder of a larger repository, the plugin directory holds every version for a reviewer, because it can't follow the hook's Python script (`checks.md`).
+The repository root is the plugin. `tests/`, `docs/` and `dev/` (the checks, the pre-commit hook and the release script) live on `main` only: the `release` branch leaves them out. From a subfolder of a larger repository, the plugin directory holds every version for a reviewer, because it can't follow the hook's Python script (`checks.md`).
 
 `plugin.json`:
 
@@ -171,7 +172,7 @@ The repository root is the plugin, so `tests/`, `docs/` and `dev/` (the checks a
   "version": "0.1.0",
   "description": "Learn one goal at a time in a Claude Code chat: probe where you are, plan the shortest path, learn one step at a time with checks, practice later, and build a knowledge graph that carries across sessions.",
   "author": { "name": "Kaden Staker" },
-  "repository": "https://github.com/kadeski/skills",
+  "repository": "https://github.com/kadeski/study",
   "license": "MIT",
   "keywords": ["learning", "tutor", "education", "practice", "knowledge-graph", "study"],
   "userConfig": {
@@ -508,7 +509,7 @@ Python 3.9 or newer, standard library only, MCP over stdio. Every tool checks it
 ## 11. Repo changes
 
 - **Code:** the repository root, as in section 3.
-- **Listing:** an entry in kadeski/skills' `.claude-plugin/marketplace.json` that points at this repository (Claude-only), and the Anthropic plugin directory, which tracks `main`.
+- **Listing:** an entry in kadeski/skills' `.claude-plugin/marketplace.json` that points at this repository (Claude-only), and the Anthropic plugin directory. Both read the `release` branch, which `dev/release.sh` builds from `main` without the tests, docs and dev tooling.
 - **Tests:** `tests/`, run with `python3 -m unittest discover -s tests`, and by `dev/check.sh`. They cover:
   - `store.py`: atomic writes, appends under the lock, folding the graph log, refusing a newer format
   - every server check in section 9, including plan cycles, a key that isn't an option, a second open question and merge dedupe
