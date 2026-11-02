@@ -32,7 +32,7 @@ To see the `/study` plan as a task list on models newer than Opus 4.7, Sonnet 4.
 
 Pictures and demos are saved in the goal's folder and opened in your browser. If Python Playwright is installed, Claude checks them by rendering them first; otherwise it says it skipped the check.
 
-## What it runs and where your data goes
+## Privacy
 
 - Everything Study saves stays in your data folder on your computer: your goals and plans, your answers and the messages you type during a Study session, and the knowledge graph. The plugin's own code sends none of it anywhere. Delete the folder to remove it.
 - A small MCP server runs on your computer with `python3`. It reads and writes only the data folder.
