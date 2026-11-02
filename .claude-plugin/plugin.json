@@ -6,6 +6,9 @@
     "name": "Kaden Staker"
   },
   "repository": "https://github.com/kadeski/study",
+  "homepage": "https://github.com/kadeski/study",
+  "documentationUrl": "https://github.com/kadeski/study#readme",
+  "supportUrl": "https://github.com/kadeski/study/issues",
   "license": "MIT",
   "keywords": [
     "learning",
