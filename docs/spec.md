@@ -169,7 +169,7 @@ The repository root is the plugin. `tests/`, `docs/` and `dev/` (the checks, the
 ```json
 {
   "name": "study",
-  "version": "0.1.0",
+  "version": "1.0.1",
   "description": "Learn one goal at a time in a Claude Code chat: probe where you are, plan the shortest path, learn one step at a time with checks, practice later, and build a knowledge graph that carries across sessions.",
   "author": { "name": "Kaden Staker" },
   "repository": "https://github.com/kadeski/study",
@@ -548,7 +548,6 @@ Run these in a scratch copy of the plugin loaded with `claude --plugin-dir`. Eac
 
 - A mod with thinking boxes and a plan pane. Or AskUserQuestion's `text` kind if it ships first.
 - Skill evals, with the repo's runner and `/hillclimb`, or `claude plugin eval`.
-- Listing in Anthropic's plugin directory.
 - Importing a LearnHarness data folder.
 - Review reminders through scheduled tasks.
 - Access from a phone (artifact pages).
