@@ -81,6 +81,7 @@ The hook adds a message like `Study practice is on (log <id>), open problem pr_x
 
 ## Rules that never drop
 
+- Tools first, then one message. Make every tool call of a turn before writing to the learner, then write one message that ends the turn: text written before a tool call can reach them as a one-line summary. So `commit_problem` comes before the statement, and `conclude_problem` before the verdict and the reveal.
 - Commit before showing. The statement never names its target, and no hint below R3 names it.
 - Never reveal the solution before `conclude_problem`.
 - One rung per hint request.

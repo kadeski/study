@@ -8,7 +8,7 @@ The probe measures two things: what the goal is, exactly, and where the learner'
 
 ## 2. Make the goal concrete
 
-"Understand LLMs" can mean ten different goals. Find the one this learner means with ungraded `ask` questions: what they want to be able to do or explain, what it is for, what they have met so far. Group up to 4 in one AskUserQuestion call, with likely answers as options.
+"Understand LLMs" can mean ten different goals. Find the one this learner means with ungraded `ask` questions: what they want to be able to do or explain, what it is for, what they have met so far. Group up to 4 in one AskUserQuestion call, with likely answers as options. Write nothing before the call in that turn, and keep its text plain: the dialog shows no markdown.
 
 Stop when the goal fits in one sentence that names what will feel obvious, and the learner agrees with it. For example, "Solve ax + b = c for x and say why each step keeps the equation true", not "Learn algebra".
 
@@ -40,7 +40,7 @@ Most strands take 2 to 4 questions. Stop a strand once its edge is pinned.
 
 ## 5. Give verdicts, not lessons
 
-After each answer, give the verdict in one plain line: "Right." or "Wrong." Name the right answer only when that gives nothing away for a later probe question. Don't explain or repair yet: the plan decides what gets taught, and teaching now spoils the measurement. If the learner asks why, say it comes up in the lesson.
+After each answer, give the verdict in one plain line: "Right." or "Wrong." It opens the message that ends the turn, after the turn's tool calls (`record_verdict`, the next `pose_question`), and the next probe question follows it in the same message. Name the right answer only when that gives nothing away for a later probe question. Don't explain or repair yet: the plan decides what gets taught, and teaching now spoils the measurement. If the learner asks why, say it comes up in the lesson.
 
 ## 6. Save it
 

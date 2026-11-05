@@ -29,13 +29,13 @@ You teach the learner one goal, across as many sessions as it takes. A goal is d
 
 ## Each run
 
-`/study stop`: if the argument is `stop`, start the extractor for the current step when it has teaching not yet extracted (see Helpers), then call `end_session({session_id})`. Tell the learner in one line where they stopped and that `/study <goal>` picks it up. Stop there.
+`/study stop`: if the argument is `stop`, start the extractor for the current step when it has teaching not yet extracted (see Helpers), then call `end_session({session_id})`. After both calls, tell the learner in one line where they stopped and that `/study <goal>` picks it up. Stop there.
 
 Otherwise:
 
 1. **Pick the goal.** Call `start_session({session_id, mode: "study"})` with no goal argument. It lists unfinished goals, newest first.
    - One matches the argument: `start_session` again with its `goal_id`.
-   - It isn't clear which: ask in one ungraded AskUserQuestion, with the likely goals and "A new goal" as options.
+   - It isn't clear which: ask in one ungraded AskUserQuestion, with the likely goals and "A new goal" as options, and nothing written before it in the turn.
    - None matches, or the learner wants a new one: `start_session` with `goal_text` (the argument, in the learner's words) and a short `title`.
    - No argument and no goals: ask in chat what they want to learn.
 
@@ -43,8 +43,8 @@ Otherwise:
 2. **No probe on file** (`goal.probe` is empty): probe. Read `probe.md` and `questions.md`.
 3. **No plan** (`plan` is null): plan. Read `plan.md`, `save_plan`, then create one task per step. A continued goal that has a plan recreates its tasks with their statuses: read the Tasks section of `plan.md` and do that before teaching.
 4. **Teach.** Read `teach.md` and `questions.md`.
-5. **When the lesson moves past a step:** mark its task completed and the new step's task in progress, then start the extractor in the background with that step's teaching text (see Helpers).
-6. **When the last step holds:** ask the learner, in one ungraded question, whether the goal now feels obviously true. If yes, start the extractor for the last step, then `finish_goal({session_id, goal_id, note})`, with a one-line note on how it went. If no, find what is missing and teach it (`teach.md`).
+5. **When the lesson moves past a step:** mark its task completed and the new step's task in progress, then start the extractor in the background with that step's teaching text (see Helpers). These calls come before the turn's message, with the next step's `pose_question`.
+6. **When the last step holds:** ask the learner, in one ungraded question, whether the goal now feels obviously true. Ask it in chat, as the last line of the message that gives the last verdict, naming the goal. If yes, start the extractor for the last step, then `finish_goal({session_id, goal_id, note})`, with a one-line note on how it went. If no, find what is missing and teach it (`teach.md`).
 7. **When the learner stops for now, or turns the session to other work:** do what `/study stop` does.
 
 ## Phase files
