@@ -7,7 +7,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-DEV=$(tr '\n' ' ' < dev/not-shipped)
+# tr -d '\r': a Windows checkout (core.autocrlf) has CRLF line ends, which would make every name
+# miss and ship the dev files.
+DEV=$(tr -d '\r' < dev/not-shipped | tr '\n' ' ')
 
 [ -z "$(git status --porcelain)" ] || { echo "FAIL: commit or stash your changes first"; exit 1; }
 git fetch -q origin
@@ -18,6 +20,12 @@ tree=$(git ls-tree HEAD | awk -F'\t' -v dev="$DEV" \
 if [ -n "$parent" ] && [ "$(git rev-parse "$parent^{tree}")" = "$tree" ]; then
   echo "release already matches HEAD"; exit 0
 fi
+
+for name in $DEV; do
+  if git ls-tree --name-only "$tree" | grep -q -x -F "$name"; then
+    echo "FAIL: $name is in dev/not-shipped but still in the release tree"; exit 1
+  fi
+done
 
 version=$(git show HEAD:.claude-plugin/plugin.json | jq -r .version)
 commit=$(git commit-tree "$tree" ${parent:+-p "$parent"} -m "study $version from $(git rev-parse --short HEAD)")

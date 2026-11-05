@@ -70,7 +70,7 @@ fi
 # the same cut dev/release.sh makes.
 ship=$(mktemp -d)
 trap 'rm -rf "$ship"' EXIT
-echo "$files" | grep -v -x -E "($(sed 's/[.]/\\./g' dev/not-shipped | paste -s -d '|' -))(/.*)?" | while read -r f; do
+echo "$files" | grep -v -x -E "($(tr -d '\r' < dev/not-shipped | sed 's/[.]/\\./g' | paste -s -d '|' -))(/.*)?" | while read -r f; do
   [ -e "$f" ] && { mkdir -p "$ship/$(dirname "$f")"; cp "$f" "$ship/$f"; }
 done
 claude plugin validate "$ship" --strict || fail=1
