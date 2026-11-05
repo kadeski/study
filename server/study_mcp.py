@@ -277,6 +277,16 @@ TOOLS = [
      "true when the file is new or differs from its last import, or with force.",
      {"path": _text("The file's absolute path."),
       "force": {"type": "boolean", "description": "True to import it again even when unchanged."}}, ["path"]),
+    ("forget_source",
+     "Take an imported notes file's ideas out of the graph. A proposition or chain this file alone "
+     "vouched for is deleted; one another goal or file also taught, or argues from, stays and just "
+     "stops citing this file. With keep, only this file's ideas outside keep go, which is how a re-import drops what "
+     "the file no longer says. Give source_id or path.",
+     {"source_id": _text("The source id, like src_a1b2."),
+      "path": _text("The file's absolute path, as it was imported. The file need not still exist."),
+      "keep": {"type": "array", "items": {"type": "string", "minLength": 1},
+               "description": "Proposition and chain ids to keep: the ids the file's latest extraction merged."}},
+     []),
     ("read_session",
      "A session log's entries: the goal's newest log, or log_id. goal_id null with a log_id reads a practice log.",
      {"goal_id": _GOAL_ID, "log_id": _text("A log id, like 2026-10-25-a1b2.")}, []),
@@ -998,9 +1008,16 @@ class Server:
                            if node_id is None or node_id == c.get("conclusion") or node_id in c.get("premises", [])]}
 
     def tool_graph_merge(self, origin, propositions, chains):
+        with self.store.graph_lock():
+            return self._graph_merge(origin, propositions, chains)
+
+    def _graph_merge(self, origin, propositions, chains):
         problems = []
         source = self._origin(origin, problems)
         props, old_chains = self.store.graph()
+        # Ids are never reissued, even after a delete: practice history is keyed on them.
+        used = {line.get("id") for rel in ("graph/propositions.jsonl", "graph/chains.jsonl")
+                for line in self.store.read_jsonl(rel)}
         texts = {pid: {_norm(t) for t in [p.get("statement")] + p.get("aliases", []) if isinstance(t, str)}
                  for pid, p in props.items()}
         by_text = {}
@@ -1025,7 +1042,7 @@ class Server:
                 continue
             target = same if same is not None else by_text.get(_norm(statement))
             if target is None:
-                target = store.new_id("p_", taken=set(props) | {pid for pid, _ in new_props})
+                target = store.new_id("p_", taken=used | {pid for pid, _ in new_props})
                 new_props.append((target, statement))
                 by_text[_norm(statement)] = target
             elif target in props:
@@ -1066,7 +1083,7 @@ class Server:
             sig = (frozenset(premises), conclusion)
             cid = chain_sigs.get(sig)
             if cid is None:
-                cid = store.new_id("c_", taken=set(old_chains) | {c for c, _, _ in new_chains})
+                cid = store.new_id("c_", taken=used | {c for c, _, _ in new_chains})
                 new_chains.append((cid, premises, conclusion))
                 chain_sigs[sig] = cid
             elif cid in old_chains and cid not in linked_chains:
@@ -1099,6 +1116,7 @@ class Server:
             })
         return {
             "ids": ids,
+            "chain_ids": touched_chains,
             "added": {"propositions": len(new_props), "chains": len(new_chains)},
             "linked": len(linked) + len(linked_chains),
         }
@@ -1157,9 +1175,89 @@ class Server:
         if source_id is None:
             source_id = store.new_id("src_", taken={line.get("id") for line in lines})
         if changed:
-            self.store.append_jsonl("graph/sources.jsonl",
-                                    {"id": source_id, "path": str(real), "sha256": sha, "at": store.now()})
+            line = {"id": source_id, "path": str(real), "sha256": sha, "at": store.now()}
+            if given.is_symlink():
+                line["given"] = str(given.absolute())  # so the file can be forgotten by this path once the link is gone
+            self.store.append_jsonl("graph/sources.jsonl", line)
         return {"source_id": source_id, "changed": changed, "path": str(real)}
+
+    def tool_forget_source(self, source_id=None, path=None, keep=None):
+        if (source_id is None) == (path is None):
+            raise ToolError("give source_id or path, not both")
+        with self.store.graph_lock():
+            return self._forget_source(source_id, path, keep)
+
+    def _forget_source(self, source_id, path, keep):
+        lines = self.store.read_jsonl("graph/sources.jsonl")
+        if path is not None:
+            given = Path(os.path.expanduser(path))
+            if not given.is_absolute():
+                raise ToolError(f"path {path!r} must be absolute")
+            names = {str(given.resolve()), str(given.absolute())}
+            ids = [line.get("id") for line in lines
+                   if (line.get("path") in names or line.get("given") in names) and line.get("id")]
+            if not ids:
+                raise ToolError(f"{given.resolve()} was never imported")
+            source_id = ids[-1]
+        mine = [line for line in lines if line.get("id") == source_id and line.get("path")]
+        if not mine:
+            raise ToolError(f"{source_id!r} is not a registered source id")
+        pruning = keep is not None
+        keep = set(keep or [])
+        props, chains = self.store.graph()
+        # A kept chain keeps its ends: the extractor names an existing idea by id without merging it again.
+        for cid in list(keep):
+            if cid in chains:
+                keep.update(chains[cid].get("premises", []) + [chains[cid].get("conclusion")])
+
+        def cites(node):
+            return any(isinstance(e, dict) and e.get("source") == source_id for e in node.get("sources", []))
+
+        def cited_elsewhere(node):
+            return any(not (isinstance(e, dict) and e.get("source") == source_id) for e in node.get("sources", []))
+
+        def stays(node_id, node):
+            return node_id in keep or not cites(node) or cited_elsewhere(node)
+
+        # A chain that stays keeps its ends: another file's argument may name this file's idea by id.
+        held = {e for cid, c in chains.items() if stays(cid, c) for e in c.get("premises", []) + [c.get("conclusion")]}
+        dead, unlinked = [], []
+        for pid, p in props.items():
+            if cites(p) and pid not in keep:
+                (unlinked if cited_elsewhere(p) or pid in held else dead).append(pid)
+        gone = set(dead)
+        dead_chains, unlinked_chains = [], []
+        for cid, c in chains.items():
+            if c.get("conclusion") in gone or any(e in gone for e in c.get("premises", [])):
+                dead_chains.append(cid)
+            elif cites(c) and cid not in keep:
+                (unlinked_chains if cited_elsewhere(c) else dead_chains).append(cid)
+        # An idea with no source left exists only while a chain names it. Once the last such chain
+        # goes, here or in an earlier call, nothing can cite it again, so it goes too.
+        ends = {e for cid, c in chains.items() if cid not in dead_chains
+                for e in c.get("premises", []) + [c.get("conclusion")]}
+        for pid, p in props.items():
+            if pid not in gone and pid not in keep and pid not in ends and not p.get("sources"):
+                dead.append(pid)
+        for pid in dead:
+            self.store.append_jsonl("graph/propositions.jsonl", {"op": "delete", "id": pid})
+        for pid in unlinked:
+            self.store.append_jsonl("graph/propositions.jsonl", {"op": "forget", "id": pid, "source": source_id})
+        for cid in dead_chains:
+            self.store.append_jsonl("graph/chains.jsonl", {"op": "delete", "id": cid})
+        for cid in unlinked_chains:
+            self.store.append_jsonl("graph/chains.jsonl", {"op": "forget", "id": cid, "source": source_id})
+        changed = bool(dead or unlinked or dead_chains or unlinked_chains)
+        if not pruning and (changed or not mine[-1].get("removed")):
+            # Without a sha256, the next register_source of this path counts the file as changed.
+            self.store.append_jsonl("graph/sources.jsonl",
+                                    {"id": source_id, "path": mine[-1]["path"], "removed": True, "at": store.now()})
+        return {
+            "source_id": source_id,
+            "path": mine[-1]["path"],
+            "removed": {"propositions": len(dead), "chains": len(dead_chains)},
+            "unlinked": {"propositions": len(unlinked), "chains": len(unlinked_chains)},
+        }
 
     # Reading logs and opening pages
 

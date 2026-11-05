@@ -169,7 +169,7 @@ The repository root is the plugin. `tests/`, `docs/` and `dev/` (the checks, the
 ```json
 {
   "name": "study",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Learn one goal at a time in a Claude Code chat: probe where you are, plan the shortest path, learn one step at a time with checks, practice later, and build a knowledge graph that carries across sessions.",
   "author": { "name": "Kaden Staker" },
   "repository": "https://github.com/kadeski/study",
@@ -263,7 +263,9 @@ User-only. Calls `open_graph_page`. See section 9.
 User-only. For each file (markdown, text, PDF):
 
 1. `register_source` returns a source id and whether the file changed since its last import. Unchanged files are skipped.
-2. The skill starts the extractor in the background with the source id and the path.
+2. The skill starts the extractor in the background with the source id and the path. After its last merge the extractor calls `forget_source` with the ids it merged, so a changed file keeps the ideas it still has and loses the rest.
+
+`--remove` calls `forget_source` for each file instead, after the learner confirms.
 
 ### `record`
 
@@ -367,6 +369,7 @@ The teacher opens finished files with `open_in_browser`.
   graph/propositions.jsonl
   graph/chains.jsonl
   graph/sources.jsonl
+  graph/.lock
   graph.html
   errors.log
 ```
@@ -380,7 +383,7 @@ The teacher opens finished files with `open_in_browser`.
 All writes go through `store.py`:
 
 - JSON files are written to a temp file, then renamed.
-- JSONL files are append-only, one line per write, under a file lock.
+- JSONL files are append-only, one line per write, under a file lock. A graph writer reads the graph and appends under one graph-wide lock (`graph/.lock`).
 - A newer `format` than the code knows stops all writes, with a message to update the plugin.
 
 ### goal.json
@@ -464,9 +467,10 @@ Practice logs use the same `start`, `answer`, `learner` and `verdict` entries pl
 - `{"op":"source","id":"p_x7k2","source":{...}}`: another place the same idea was taught
 - `{"op":"alias","id":"p_x7k2","text":"..."}`
 - `{"op":"add","id":"c_m1q9","premises":["p_..","p_.."],"conclusion":"p_..","sources":[...]}` (chains)
+- `{"op":"forget","id":"...","source":"src_..."}`: the node no longer cites that imported file
 - `{"op":"delete","id":"..."}`
 
-`sources.jsonl` has one line per import: `id`, `path`, `sha256`, `at`.
+`sources.jsonl` has one line per import: `id`, `path`, `sha256`, `at`, and `given` when the path imported was a symlink. Taking a file out writes a line with `removed: true` and no `sha256`.
 
 ## 9. MCP server tools
 
@@ -492,6 +496,7 @@ Python 3.9 or newer, standard library only, MCP over stdio. Every tool checks it
 | `graph_chains(node_id?)` | Chains, or those that use a proposition |
 | `graph_merge(origin, propositions, chains)` | The only graph writer. Drops exact duplicates, honors `same_as`, checks that every chain's ids exist, logs `extracted` |
 | `register_source(path)` | Returns `{source_id, changed}` |
+| `forget_source(source_id or path, keep?)` | Takes an imported file's ideas out of the graph, or with `keep` only the ones its re-import did not touch |
 | `read_session(goal_id, log_id?)` | Log entries for `record` and continuing goals |
 | `open_graph_page(goal_id?)` | Builds `graph.html` and opens it |
 | `open_in_browser(path)` | Opens a file inside the data folder; refuses any other path |

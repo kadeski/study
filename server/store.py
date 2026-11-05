@@ -5,6 +5,8 @@ Standard library only; runs on Python 3.9.
 
 - JSON files are written to a temp file, then renamed.
 - JSONL files are append-only, one line per write, under a file lock.
+- A read of the graph followed by writes that depend on it runs under `graph_lock`, so two
+  writers can't both decide from the same stale graph.
 - A data folder with a newer `format` than FORMAT refuses every write.
 """
 import contextlib
@@ -207,6 +209,20 @@ class Store:
         self._append(rel, lambda existing: obj, read=False)
         return obj
 
+    @contextlib.contextmanager
+    def graph_lock(self):
+        """Holds the graph-wide lock (`graph/.lock`) while the block runs.
+
+        For a read of the graph files followed by appends that depend on it. The lock is its own
+        file, so the appends' per-file locks nest inside it.
+        """
+        self.check_writable()
+        path = self.path("graph/.lock")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "a+b") as f:
+            with _exclusive(f, path):
+                yield
+
     def append_entry(self, rel, entry):
         """Appends a session log entry, adding `n` (last n + 1) and `at` under the lock.
 
@@ -383,7 +399,8 @@ def fold(ops):
     """Folds a graph operation log (spec section 8, Graph) into id -> node.
 
     Ops: add (the node's fields), source (another place it was taught), alias (another wording),
-    delete. Ops on unknown ids are ignored. Every node gets `sources`; propositions get `aliases`.
+    forget (drop every `sources` entry from one imported source), delete. Ops on unknown ids are
+    ignored. Every node gets `sources`; propositions get `aliases`.
     """
     nodes = {}
     for op in ops:
@@ -399,6 +416,10 @@ def fold(ops):
                 nodes[node_id]["sources"].append(op["source"])
             elif kind == "alias" and op.get("text"):
                 nodes[node_id].setdefault("aliases", []).append(op["text"])
+            elif kind == "forget" and op.get("source") is not None:
+                nodes[node_id]["sources"] = [
+                    entry for entry in nodes[node_id]["sources"]
+                    if not (isinstance(entry, dict) and entry.get("source") == op["source"])]
             elif kind == "delete":
                 del nodes[node_id]
     return nodes

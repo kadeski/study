@@ -24,7 +24,7 @@ To stop Claude Code asking before each Study tool call, allow the whole Study se
 - `/study <goal>` - start a goal, or continue an unfinished one. `/study stop` ends the session for now.
 - `/practice [topic]` - practice what you were taught, with problems that don't say which idea they need. `/practice stop` ends it.
 - `/graph` - open your knowledge graph as a page in the browser.
-- `/import-notes <path>` - add your own notes (markdown, text or PDF) to the knowledge graph.
+- `/import-notes <path>` - add your own notes (markdown, text or PDF) to the knowledge graph. Re-import an edited file to update it, or `--remove` to take its ideas back out.
 
 Claude can also look up what you studied when it would help an answer, without changing anything.
 

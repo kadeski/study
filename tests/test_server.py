@@ -138,8 +138,8 @@ class ProtocolTest(ServerTest):
         self.assertEqual(names, [
             "start_session", "end_session", "list_goals", "save_probe", "save_plan", "read_plan", "finish_goal",
             "pose_question", "record_verdict", "record_answer", "commit_problem", "conclude_problem", "due_list",
-            "graph_overview", "graph_find", "graph_chains", "graph_merge", "register_source", "read_session",
-            "open_graph_page", "open_in_browser",
+            "graph_overview", "graph_find", "graph_chains", "graph_merge", "register_source", "forget_source",
+            "read_session", "open_graph_page", "open_in_browser",
         ])
         for t in tools:
             self.assertEqual(t["inputSchema"]["type"], "object")
@@ -855,6 +855,166 @@ class SourceAndPageTest(ServerTest):
         self.assertEqual([line["sha256"] for line in lines], [lines[0]["sha256"]] * 2)
         self.assertFalse(self.ok("register_source", path=str(notes))["changed"])
         self.assertIn("force must be true or false", self.bad("register_source", path=str(notes), force="yes"))
+
+    def forget_setup(self):
+        """Two imported files sharing one idea, a chain from each, and one idea taught in a goal too."""
+        a = Path(self.tmp.name) / "a.md"
+        b = Path(self.tmp.name) / "b.md"
+        a.write_text("a\n")
+        b.write_text("b\n")
+        src_a = self.ok("register_source", path=str(a))["source_id"]
+        src_b = self.ok("register_source", path=str(b))["source_id"]
+        mine = self.ok("graph_merge", origin={"source": src_a}, propositions=[
+            {"key": "x", "statement": "Only in a"}, {"key": "s", "statement": "Shared"},
+            {"key": "t", "statement": "Taught too"}], chains=[{"premises": ["x"], "conclusion": "s"}])
+        other = self.ok("graph_merge", origin={"source": src_b}, propositions=[
+            {"key": "s", "statement": "Shared"}, {"key": "y", "statement": "Only in b"}],
+            chains=[{"premises": ["y"], "conclusion": "s"}])
+        gid, log_id = self.planned()
+        self.ok("graph_merge", origin={"goal": gid, "log": log_id, "step": "s1"},
+                propositions=[{"key": "t", "statement": "Taught too"}], chains=[])
+        return a, src_a, src_b, mine, other
+
+    def test_forget_source_removes_what_only_it_vouched_for(self):
+        a, src_a, src_b, mine, other = self.forget_setup()
+        out = self.ok("forget_source", path=str(a))
+        self.assertEqual(out["source_id"], src_a)
+        self.assertEqual(out["path"], str(a.resolve()))
+        self.assertEqual(out["removed"], {"propositions": 1, "chains": 1})
+        self.assertEqual(out["unlinked"], {"propositions": 2, "chains": 0})
+        props, chains = self.s.graph()
+        self.assertNotIn(mine["ids"]["x"], props)
+        self.assertEqual([e for e in props[mine["ids"]["s"]]["sources"]], [{"source": src_b}])
+        self.assertEqual(len(props[mine["ids"]["t"]]["sources"]), 1)
+        self.assertIn("goal", props[mine["ids"]["t"]]["sources"][0])
+        self.assertEqual(list(chains), other["chain_ids"])
+        # The file counts as changed at its next import, so it can come back.
+        again = self.ok("register_source", path=str(a))
+        self.assertEqual((again["source_id"], again["changed"]), (src_a, True))
+        self.assertEqual(self.s.read_jsonl("graph/sources.jsonl")[-2]["removed"], True)
+        # Forgetting again finds nothing.
+        empty = self.ok("forget_source", source_id=src_a)
+        self.assertEqual((empty["removed"], empty["unlinked"]), ({"propositions": 0, "chains": 0},) * 2)
+
+    def test_forget_source_keep_prunes_a_reimport(self):
+        a, src_a, src_b, mine, other = self.forget_setup()
+        # The edited file still says "Shared" and "Taught too" but no longer "Only in a".
+        kept = self.ok("graph_merge", origin={"source": src_a}, propositions=[
+            {"key": "s", "statement": "Shared"}, {"key": "t", "statement": "Taught too"}], chains=[])
+        out = self.ok("forget_source", source_id=src_a, keep=list(kept["ids"].values()) + kept["chain_ids"])
+        self.assertEqual(out["removed"], {"propositions": 1, "chains": 1})
+        self.assertEqual(out["unlinked"], {"propositions": 0, "chains": 0})
+        props, chains = self.s.graph()
+        self.assertEqual(set(props), {mine["ids"]["s"], mine["ids"]["t"], other["ids"]["y"]})
+        self.assertIn({"source": src_a}, props[mine["ids"]["s"]]["sources"])
+        self.assertNotIn("removed", self.s.read_jsonl("graph/sources.jsonl")[-1])
+        self.assertFalse(self.ok("register_source", path=str(a))["changed"])
+
+    def test_forget_source_empty_keep_prunes_without_marking_removed(self):
+        a, src_a, src_b, mine, other = self.forget_setup()
+        out = self.ok("forget_source", source_id=src_a, keep=[])
+        self.assertEqual(out["removed"], {"propositions": 1, "chains": 1})
+        self.assertNotIn("removed", self.s.read_jsonl("graph/sources.jsonl")[-1])
+        self.assertFalse(self.ok("register_source", path=str(a))["changed"])
+
+    def test_forget_source_keeps_an_idea_another_files_chain_names(self):
+        a, src_a, src_b, mine, other = self.forget_setup()
+        # File b argues from a's idea by id, without restating it.
+        held = self.ok("graph_merge", origin={"source": src_b}, propositions=[{"key": "z", "statement": "From x"}],
+                       chains=[{"premises": [mine["ids"]["x"]], "conclusion": "z"}])
+        out = self.ok("forget_source", path=str(a))
+        self.assertEqual(out["removed"], {"propositions": 0, "chains": 1})
+        self.assertEqual(out["unlinked"], {"propositions": 3, "chains": 0})
+        props, chains = self.s.graph()
+        self.assertEqual(props[mine["ids"]["x"]]["sources"], [])
+        self.assertIn(held["chain_ids"][0], chains)
+
+    def test_forget_source_keep_covers_the_ends_of_a_kept_chain(self):
+        a, src_a, src_b, mine, other = self.forget_setup()
+        # The edited file still argues from "Only in a" to "Shared", naming x by its id instead of restating it.
+        kept = self.ok("graph_merge", origin={"source": src_a}, propositions=[{"key": "s", "statement": "Shared"}],
+                       chains=[{"premises": [mine["ids"]["x"]], "conclusion": "s"}])
+        self.assertEqual(kept["chain_ids"], mine["chain_ids"])
+        out = self.ok("forget_source", source_id=src_a, keep=list(kept["ids"].values()) + kept["chain_ids"])
+        self.assertEqual(out["removed"], {"propositions": 0, "chains": 0})
+        self.assertEqual(out["unlinked"], {"propositions": 1, "chains": 0})  # "Taught too"
+        props, chains = self.s.graph()
+        self.assertEqual(props[mine["ids"]["x"]]["sources"], [{"source": src_a}])
+        self.assertIn(mine["chain_ids"][0], chains)
+
+    def test_forget_source_collects_an_idea_once_no_chain_names_it(self):
+        a, src_a, src_b, mine, other = self.forget_setup()
+        b = Path(self.tmp.name) / "b.md"
+        self.ok("graph_merge", origin={"source": src_b}, propositions=[{"key": "z", "statement": "From x"}],
+                chains=[{"premises": [mine["ids"]["x"]], "conclusion": "z"}])
+        self.ok("forget_source", path=str(a))
+        self.assertEqual(self.s.graph()[0][mine["ids"]["x"]]["sources"], [])
+        # Taking b out deletes its chain, and with it the last reason to keep x.
+        out = self.ok("forget_source", path=str(b))
+        self.assertEqual(out["removed"], {"propositions": 4, "chains": 2})  # y, z, "Shared" and x; b's two chains
+        self.assertEqual(out["unlinked"], {"propositions": 0, "chains": 0})
+        props, chains = self.s.graph()
+        self.assertNotIn(mine["ids"]["x"], props)
+
+    def test_forget_source_does_not_repeat_the_removed_line(self):
+        a, src_a, src_b, mine, other = self.forget_setup()
+        self.ok("forget_source", path=str(a))
+        before = self.s.read_jsonl("graph/sources.jsonl")
+        self.ok("forget_source", path=str(a))
+        self.assertEqual(self.s.read_jsonl("graph/sources.jsonl"), before)
+
+    def test_forget_source_by_the_path_of_a_deleted_link(self):
+        a, src_a, src_b, mine, other = self.forget_setup()
+        target = Path(self.tmp.name) / "vault.md"
+        target.write_text("vault\n")
+        link = Path(self.tmp.name) / "link.md"
+        link.symlink_to(target)
+        src = self.ok("register_source", path=str(link))
+        self.assertEqual(src["path"], str(target.resolve()))
+        self.assertEqual(self.s.read_jsonl("graph/sources.jsonl")[-1]["given"], str(link))
+        self.assertNotIn("given", self.s.read_jsonl("graph/sources.jsonl")[0])
+        link.unlink()
+        self.assertEqual(self.ok("forget_source", path=str(link))["source_id"], src["source_id"])
+
+    def test_forget_source_arguments(self):
+        a, src_a, src_b, mine, other = self.forget_setup()
+        self.assertIn("give source_id or path", self.bad("forget_source"))
+        self.assertIn("give source_id or path", self.bad("forget_source", source_id=src_a, path=str(a)))
+        self.assertIn("must be absolute", self.bad("forget_source", path="a.md"))
+        self.assertIn("was never imported", self.bad("forget_source", path=str(Path(self.tmp.name) / "no.md")))
+        self.assertIn("is not a registered source id", self.bad("forget_source", source_id="src_zzzz"))
+        self.assertIn("keep[0] must be a string", self.bad("forget_source", source_id=src_a, keep=[1]))
+        self.assertIn("keep[0]", self.bad("forget_source", source_id=src_a, keep=[""]))
+        a.unlink()  # a deleted notes file can still be forgotten
+        self.assertEqual(self.ok("forget_source", path=str(a))["source_id"], src_a)
+
+    def test_graph_merge_never_reissues_a_deleted_id(self):
+        a, src_a, src_b, mine, other = self.forget_setup()
+        self.ok("forget_source", path=str(a))
+        dead = mine["ids"]["x"][2:]
+        with mock.patch.object(store, "rand4", side_effect=[dead, "zz9q"]):
+            out = self.ok("graph_merge", origin={"source": src_b},
+                          propositions=[{"key": "n", "statement": "New in b"}], chains=[])
+        self.assertEqual(out["ids"]["n"], "p_zz9q")
+
+    def test_graph_writers_wait_for_the_graph_lock(self):
+        import threading
+        a, src_a, src_b, mine, other = self.forget_setup()
+        done = threading.Event()
+        results = []
+
+        def merge():
+            results.append(self.ok("graph_merge", origin={"source": src_b},
+                                   propositions=[{"key": "n", "statement": "New in b"}], chains=[]))
+            done.set()
+
+        with self.s.graph_lock():
+            t = threading.Thread(target=merge)
+            t.start()
+            self.assertFalse(done.wait(0.3))
+        t.join(5)
+        self.assertTrue(done.is_set())
+        self.assertIn("n", results[0]["ids"])
 
     def test_read_session(self):
         self.assertIn("give goal_id, log_id", self.bad("read_session"))

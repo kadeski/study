@@ -161,6 +161,9 @@ class GraphTest(StoreTest):
             {"op": "source", "id": "p_a", "source": {"source": "src_1"}},
             {"op": "alias", "id": "p_a", "text": "a"},
             {"op": "alias", "id": "p_zz", "text": "ignored"},
+            {"op": "source", "id": "p_b", "source": {"source": "src_1"}},
+            {"op": "source", "id": "p_b", "source": {"goal": "g"}},
+            {"op": "forget", "id": "p_b", "source": "src_1"},
             {"op": "delete", "id": "p_c"},
         ):
             self.s.append_jsonl("graph/propositions.jsonl", op)
@@ -170,6 +173,7 @@ class GraphTest(StoreTest):
         self.assertEqual(list(props), ["p_a", "p_b"])
         self.assertEqual(props["p_a"]["sources"], [{"goal": "g"}, {"source": "src_1"}])
         self.assertEqual(props["p_a"]["aliases"], ["a"])
+        self.assertEqual(props["p_b"]["sources"], [{"goal": "g"}])
         self.assertEqual(list(chains), ["c_1"])
         self.assertNotIn("aliases", chains["c_1"])
 
