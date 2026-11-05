@@ -1,6 +1,6 @@
 # Issue 1 - summarized teaching and readable answer keys
 
-kadeski/study#1. Decided with the maintainer on 2026-11-05. Ships as 1.0.3.
+kadeski/study#1. Decided with the maintainer on 2026-11-05. Shipped in 1.0.3; 1.0.4 re-ships it without the dev files 1.0.3 carried by mistake.
 
 ## What was found
 

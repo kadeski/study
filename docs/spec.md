@@ -169,7 +169,7 @@ The repository root is the plugin. `tests/`, `docs/` and `dev/` (the checks, the
 ```json
 {
   "name": "study",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Learn one goal at a time in a Claude Code chat: probe where you are, plan the shortest path, learn one step at a time with checks, practice later, and build a knowledge graph that carries across sessions.",
   "author": { "name": "Kaden Staker" },
   "repository": "https://github.com/kadeski/study",
