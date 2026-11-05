@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-# Runs dev/check.sh and blocks the commit if it fails. Turn it on once per clone with
-# `git config core.hooksPath dev/hooks`. It checks the working tree, so unstaged changes
-# count too. `git commit --no-verify` skips it.
-exec dev/check.sh
