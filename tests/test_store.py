@@ -28,7 +28,7 @@ class DataDirTest(unittest.TestCase):
         env = dict(os.environ)
         try:
             os.environ["CLAUDE_PLUGIN_OPTION_DATA_DIR"] = "~/from-env"
-            self.assertEqual(store.resolve_data_dir("/x/arg"), Path("/x/arg"))
+            self.assertEqual(store.resolve_data_dir("/x/arg"), Path("/x/arg").absolute())
             self.assertEqual(store.resolve_data_dir(""), Path(os.path.expanduser("~/from-env")))
             self.assertEqual(
                 store.resolve_data_dir("${user_config.data_dir}"), Path(os.path.expanduser("~/from-env"))

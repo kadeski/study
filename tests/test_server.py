@@ -968,7 +968,7 @@ class SourceAndPageTest(ServerTest):
         target = Path(self.tmp.name) / "vault.md"
         target.write_text("vault\n")
         link = Path(self.tmp.name) / "link.md"
-        link.symlink_to(target)
+        symlink_or_skip(self, link, target)
         src = self.ok("register_source", path=str(link))
         self.assertEqual(src["path"], str(target.resolve()))
         self.assertEqual(self.s.read_jsonl("graph/sources.jsonl")[-1]["given"], str(link))
@@ -1060,7 +1060,7 @@ class SourceAndPageTest(ServerTest):
         outside.write_text("<p>")
         self.assertIn("outside the data folder", self.bad("open_in_browser", path=str(outside)))
         link = media / "link.html"
-        os.symlink(str(outside), str(link))
+        symlink_or_skip(self, link, outside)
         self.assertIn("outside the data folder", self.bad("open_in_browser", path=str(link)))
         self.assertIn("outside the data folder", self.bad("open_in_browser", path=str(media / ".." / ".." / ".." / ".." / "outside.html")))
         self.assertIn("is not a file", self.bad("open_in_browser", path=str(media / "missing.svg")))
@@ -1075,6 +1075,15 @@ class SourceAndPageTest(ServerTest):
             self.assertIn("No browser could be opened", self.bad("open_in_browser", path=str(picture)))
 
 
+def symlink_or_skip(test, link, target):
+    """Makes `link` point at `target`, or skips the test where the OS refuses (Windows without
+    the symlink privilege)."""
+    try:
+        os.symlink(str(target), str(link))
+    except OSError as e:
+        test.skipTest(f"symlinks not available here: {e}")
+
+
 class StdioTest(unittest.TestCase):
     def test_over_stdio_with_isolated_python(self):
         with tempfile.TemporaryDirectory() as home:
@@ -1087,7 +1096,7 @@ class StdioTest(unittest.TestCase):
                  "params": {"name": "start_session", "arguments": {"session_id": SID, "goal_text": "Ünïcode goal"}}},
             ]
             stdin = "".join(json.dumps(m) + "\n" for m in messages) + "not json\n"
-            env = dict(os.environ, HOME=home)
+            env = dict(os.environ, HOME=home, USERPROFILE=home)
             env.pop("CLAUDE_PLUGIN_OPTION_DATA_DIR", None)
             proc = subprocess.run(
                 [sys.executable, "-I", str(SERVER / "study_mcp.py"), "--data-dir", "~/Study"],

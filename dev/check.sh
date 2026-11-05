@@ -50,7 +50,7 @@ hits=$(git grep -n -o -i -E '\$\{[^}]*(key|token|secret|password|auth)[^}]*\}' |
 # The Python must parse as 3.9, the oldest Study supports.
 for f in $(echo "$files" | grep '\.py$'); do
   [ -e "$f" ] || continue
-  python3 -c 'import ast, sys; ast.parse(open(sys.argv[1]).read(), feature_version=(3, 9))' "$f" 2>&1 \
+  python3 -c 'import ast, sys; ast.parse(open(sys.argv[1], encoding="utf-8").read(), feature_version=(3, 9))' "$f" 2>&1 \
     || err "$f does not parse as Python 3.9"
 done
 if ! out=$(python3 -m unittest discover -s tests 2>&1); then

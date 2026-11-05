@@ -260,13 +260,13 @@ class Store:
     # Paths
 
     def goal_rel(self, goal_id, *parts):
-        return str(Path("goals", check_id(goal_id, "goal_id"), *parts))
+        return Path("goals", check_id(goal_id, "goal_id"), *parts).as_posix()
 
     def log_rel(self, goal_id, log_id):
         """The session log of `log_id`: under the goal, or under practice/ when goal_id is None."""
         name = check_id(log_id, "log_id") + ".jsonl"
         if goal_id is None:
-            return str(Path("practice", "sessions", name))
+            return Path("practice", "sessions", name).as_posix()
         return self.goal_rel(goal_id, "sessions", name)
 
     # Goals
@@ -349,7 +349,7 @@ class Store:
     # Active markers: <data>/active/<claude-session-id>.json = {mode, goal, log, started}
 
     def marker_rel(self, session_id):
-        return str(Path("active", check_id(session_id, "session_id") + ".json"))
+        return Path("active", check_id(session_id, "session_id") + ".json").as_posix()
 
     def write_marker(self, session_id, marker):
         self.write_json(self.marker_rel(session_id), marker)

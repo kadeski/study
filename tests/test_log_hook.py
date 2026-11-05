@@ -52,7 +52,7 @@ class HookTest(unittest.TestCase):
     def run_hook(self, mode, payload=None, raw=None, extra=()):
         env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE_")}
         env["CLAUDE_PLUGIN_OPTION_DATA_DIR"] = str(self.data)
-        env["HOME"] = str(self.home)
+        env["HOME"] = env["USERPROFILE"] = str(self.home)
         stdin = raw if raw is not None else json.dumps(payload)
         p = subprocess.run(
             [sys.executable, "-I", *extra, str(HOOK), mode], input=stdin.encode("utf-8"),
@@ -173,12 +173,17 @@ class NoMarkerTest(HookTest):
         self.assertEqual(self.entries(), [])
 
     def imported(self, payload):
+        """Modules the hook imports beyond what a bare `python3 -I` already has at startup."""
+        def names(stderr):
+            return {line.rsplit("|", 1)[-1].strip() for line in stderr.decode().splitlines()}
+        bare = subprocess.run([sys.executable, "-I", "-X", "importtime", "-c", "pass"],
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
         p = self.run_hook("prompt", payload, extra=("-X", "importtime"))
-        return {line.rsplit("|", 1)[-1].strip() for line in p.stderr.decode().splitlines()}
+        self.assertIn("os", names(p.stderr))  # the import list is really there
+        return names(p.stderr) - names(bare.stderr)
 
     def test_no_marker_anywhere_imports_nothing_heavy(self):
         imported = self.imported(fixture("user_prompt_submit.json"))
-        self.assertIn("os", imported)  # the import list is really there
         for name in ("json", "re", "pathlib", "store"):
             self.assertNotIn(name, imported)
 
