@@ -26,7 +26,7 @@ Use multiple choice when the idea comes down to telling a few options apart. Use
 
 ## A graded multiple-choice question
 
-1. **Commit the key.** Call `pose_question`. Write the properties in this order, so the explanation is written before the key:
+1. **Commit the key.** Call `pose_question`. Write the properties in this order, so the explanation is written before the key. The explanation and each key item go in base64, so a learner who opens the transcript (ctrl+o) doesn't read the answer by accident. Here the explanation is "Subtract 4 from both sides: 3x = 15. Divide both sides by 3: x = 5. 15 forgets to divide; 23/3 adds the 4 instead of taking it off." and the key is "5":
 
    ```json
    {
@@ -35,19 +35,21 @@ Use multiple choice when the idea comes down to telling a few options apart. Use
      "step_id": "s2",
      "question": "Solve 3x + 4 = 19. What is x?",
      "options": ["5", "15", "23/3"],
-     "explanation": "Subtract 4 from both sides: 3x = 15. Divide both sides by 3: x = 5. 15 forgets to divide; 23/3 adds the 4 instead of taking it off.",
-     "key": ["5"],
+     "explanation_b64": "U3VidHJhY3QgNCBmcm9tIGJvdGggc2lkZXM6IDN4ID0gMTUuIERpdmlkZSBib3RoIHNpZGVzIGJ5IDM6IHggPSA1LiAxNSBmb3JnZXRzIHRvIGRpdmlkZTsgMjMvMyBhZGRzIHRoZSA0IGluc3RlYWQgb2YgdGFraW5nIGl0IG9mZi4=",
+     "key_b64": ["NQ=="],
      "multi": false
    }
    ```
 
+   - **Base64:** standard alphabet, UTF-8, with `=` padding. Work the explanation and key out in your thinking first, then write only their base64 in the call. Never write them in plain text anywhere the learner can see before they answer.
+
    - `kind` is `probe`, `predict` or `check`. `step_id` is required for `predict` and `check` and left out for `probe`.
    - `options`: 2 to 4 distinct, non-empty labels. Each wrong option is a real wrong idea a learner might hold, ideally one the probe found. Keep options alike in length and form. No "all of the above".
-   - `key`: a list of labels copied exactly from `options`. `multi: true` only when the key has more than one label. With `multi: true`, no label may hold ", ": that is how the picks of a multi-select answer are joined.
+   - `key_b64`: a list holding the base64 of labels copied exactly from `options`. `multi: true` only when the key has more than one label. With `multi: true`, no label may hold ", ": that is how the picks of a multi-select answer are joined.
    - Options never look like a choice letter (`A`, `b.`, `(c)`): the learner answers with letters. The server refuses them.
    - The server adds "I don't know" when there are 3 or fewer options, shuffles them, and returns `{"question_id": "q3", "options": [...], "choices": ["A. 15", "B. I don't know", "C. 5", "D. 23/3"]}`.
    - `"closed": "q2"` in the result means an earlier question had no answer and was logged as skipped. Expect that only when you meant to drop it.
-   - An error lists what to fix. Fix it and call again.
+   - An error lists what to fix. Fix it and call again. An encoding error names the field, like `key_b64[0] does not decode to one of the options`: check the label and encode it again.
 
 2. **Ask it in chat.** After `pose_question` returns, write the turn's one message: the teaching that leads to the question, the question, then the `choices` as a bullet list. End the turn there.
 
@@ -77,7 +79,7 @@ Use multiple choice when the idea comes down to telling a few options apart. Use
 
 ## A graded free-text question
 
-1. **Commit the key.** Call `pose_question` with `free_text: true`, no `options`, and `key` as a one-item list holding the model answer:
+1. **Commit the key.** Call `pose_question` with `free_text: true`, no `options`, and `key_b64` as a one-item list holding the model answer, both it and the explanation in base64 as above:
 
    ```json
    {
@@ -85,8 +87,8 @@ Use multiple choice when the idea comes down to telling a few options apart. Use
      "kind": "check",
      "step_id": "s1",
      "question": "Why does subtracting 4 from both sides keep 3x + 4 = 19 true?",
-     "explanation": "Both sides name the same number. Taking 4 from the same number on each side leaves the same number on each side.",
-     "key": ["Both sides are equal, and taking the same amount from equal amounts leaves equal amounts."],
+     "explanation_b64": "Qm90aCBzaWRlcyBuYW1lIHRoZSBzYW1lIG51bWJlci4gVGFraW5nIDQgZnJvbSB0aGUgc2FtZSBudW1iZXIgb24gZWFjaCBzaWRlIGxlYXZlcyB0aGUgc2FtZSBudW1iZXIgb24gZWFjaCBzaWRlLg==",
+     "key_b64": ["Qm90aCBzaWRlcyBhcmUgZXF1YWwsIGFuZCB0YWtpbmcgdGhlIHNhbWUgYW1vdW50IGZyb20gZXF1YWwgYW1vdW50cyBsZWF2ZXMgZXF1YWwgYW1vdW50cy4="],
      "free_text": true
    }
    ```
@@ -113,7 +115,7 @@ The hook can miss an answer. When an answer comes in with no hook line about it:
 - `dontKnow`: they say they don't know, or make no attempt.
 - `note`: one line on what was there and what was missing.
 
-Grade against the key and the explanation you committed, not against a new idea of the answer.
+Grade against the key and the explanation you committed, not against a new idea of the answer. If they are gone from your context, `read_session` shows an unanswered question's `key_b64` and `explanation_b64`: decode them in your thinking, and never write them out before the verdict.
 
 ## Giving the verdict
 

@@ -289,7 +289,7 @@ Model-invocable and read-only. Its description says when to use it: when an answ
 
 ### A graded multiple-choice question
 
-1. `pose_question({session_id, kind, step_id, question, options, key, multi, explanation})`. The explanation comes before the key in the schema, so the reasoning is written first. The server checks that:
+1. `pose_question({session_id, kind, step_id, question, options, explanation_b64, key_b64, multi})`. The explanation comes before the key in the schema, so the reasoning is written first. Both arrive in base64, so a learner who opens the transcript (ctrl+o) doesn't read the answer by accident; the server decodes them, and its errors never quote the decoded text. The server checks that:
    - every key is one of the options
    - `multi` is true when there are several keys
    - the options are 2 to 4 distinct, non-empty labels, none of which looks like a choice letter
@@ -304,7 +304,7 @@ A graded question asked through AskUserQuestion, by a lesson begun before 1.0.3,
 
 ### A graded free-text question
 
-1. `pose_question` with `free_text: true` and `key` holding the model answer.
+1. `pose_question` with `free_text: true` and `key_b64` holding the model answer.
 2. The teacher asks it in chat.
 3. The UserPromptSubmit hook links the learner's next message to the open question and adds `additionalContext`: `q9: free-text answer linked, grade it`.
 4. The teacher grades it and calls `record_verdict({question_id, verdict, note})`.
@@ -490,7 +490,7 @@ Python 3.9 or newer, standard library only, MCP over stdio. Every tool checks it
 | `pose_question(...)` | Section 5 |
 | `record_verdict(question_id, verdict, note?)` | Teacher grades |
 | `record_answer(question_id, text)` | Fallback when a hook missed a free-text answer |
-| `commit_problem(session_id, statement, mode, targets, cue_class, solution)` | Refused while a problem is open |
+| `commit_problem(session_id, statement, mode, targets, cue_class, solution_b64)` | Refused while a problem is open; the solution arrives in base64 |
 | `conclude_problem(problem_id, outcome, verdict, rung, miss_class?, retest)` | Returns the solution and new due dates |
 | `due_list(limit?)` | Targets due now, oldest first |
 | `graph_overview(goal_id?)` | Counts and a capped list of statements |
@@ -499,7 +499,7 @@ Python 3.9 or newer, standard library only, MCP over stdio. Every tool checks it
 | `graph_merge(origin, propositions, chains)` | The only graph writer. Drops exact duplicates, honors `same_as`, checks that every chain's ids exist, logs `extracted` |
 | `register_source(path)` | Returns `{source_id, changed}` |
 | `forget_source(source_id or path, keep?)` | Takes an imported file's ideas out of the graph, or with `keep` only the ones its re-import did not touch |
-| `read_session(goal_id, log_id?)` | Log entries for `record` and continuing goals |
+| `read_session(goal_id, log_id?)` | Log entries for `record` and continuing goals; an unanswered question's key and explanation in base64 |
 | `open_graph_page(goal_id?)` | Builds `graph.html` and opens it |
 | `open_in_browser(path)` | Opens a file inside the data folder; refuses any other path |
 

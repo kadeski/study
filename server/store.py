@@ -9,6 +9,8 @@ Standard library only; runs on Python 3.9.
   writers can't both decide from the same stale graph.
 - A data folder with a newer `format` than FORMAT refuses every write.
 """
+import base64
+import binascii
 import contextlib
 import json
 import os
@@ -468,6 +470,44 @@ def step_statuses(plan, entries):
         statuses[s] = "visited"
     statuses[current] = "current"
     return statuses
+
+
+def decode_b64(value):
+    """The text `value` encodes in base64 (standard alphabet, padded, UTF-8), else None.
+
+    Answer keys, explanations and practice solutions reach the server this way, so a learner who
+    opens the transcript (ctrl+o) can't read them at a glance. Whitespace inside is ignored, and
+    text that is blank once decoded counts as unreadable.
+    """
+    if not isinstance(value, str):
+        return None
+    try:
+        text = base64.b64decode("".join(value.split()), validate=True).decode("utf-8")
+    except (binascii.Error, ValueError):
+        return None
+    return text if text.strip() else None
+
+
+def encode_b64(text):
+    return base64.b64encode(text.encode("utf-8")).decode("ascii")
+
+
+def seal_open_questions(entries):
+    """`entries` with each unanswered question's `key` and `explanation` in base64.
+
+    A question with no `answer` and no `verdict` entry is still open to the learner, so a tool
+    result that shows it gives `key_b64` and `explanation_b64` in place of the plain fields.
+    """
+    done = {e.get("question") for e in entries if e.get("type") in ("answer", "verdict")}
+    out = []
+    for e in entries:
+        if e.get("type") == "question" and e.get("id") not in done:
+            e = dict(e)
+            key, explanation = e.pop("key", None), e.pop("explanation", None)
+            e["key_b64"] = [encode_b64(k) for k in key or []]
+            e["explanation_b64"] = encode_b64(explanation) if isinstance(explanation, str) else None
+        out.append(e)
+    return out
 
 
 def choices(options):

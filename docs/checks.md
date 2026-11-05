@@ -32,7 +32,9 @@ Run by hand on 2026-11-05 in the terminal (Claude Code 2.1.318, Windows, auto mo
 - The AskUserQuestion dialog renders no markdown in its `question` field: code blocks, inline code and tables show as raw text.
 - ctrl+o shows every tool input in plain text, `pose_question`'s `key` and `explanation` included.
 
-Decision: every turn makes its tool calls first and ends with one message; graded questions are asked in chat, multiple choice with lettered choices the prompt hook grades; AskUserQuestion carries only ungraded asks, in plain text.
+Decision on ctrl+o: `pose_question` takes the key and explanation, and `commit_problem` the solution, in base64, and tool results show an unanswered question's key the same way. That stops a glance, not a learner who decodes it, and thinking summaries (with `showThinkingSummaries` on) can still mention the answer.
+
+Decision on the summaries: every turn makes its tool calls first and ends with one message; graded questions are asked in chat, multiple choice with lettered choices the prompt hook grades; AskUserQuestion carries only ungraded asks, in plain text.
 
 ## Hand check
 

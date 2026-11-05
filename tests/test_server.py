@@ -17,6 +17,14 @@ sys.path.insert(0, str(SERVER))
 import store  # noqa: E402
 import study_mcp  # noqa: E402
 
+b64 = store.encode_b64
+
+
+def enc(items):
+    """Answer key items as pose_question takes them: each in base64."""
+    return [b64(item) for item in items]
+
+
 SID = "0b4c2f9e-1111-4c4c-9a9a-000000000001"
 STEPS = [
     {"id": "s1", "title": "Balance", "claim": "Doing the same to both sides keeps an equation true", "dependsOn": []},
@@ -80,7 +88,7 @@ class ServerTest(unittest.TestCase):
     def mc(self, sid=SID, **extra):
         args = dict(session_id=sid, kind="check", step_id="s1", question="Which keeps x + 2 = 5 true?",
                     options=["Subtract 2 from both sides", "Subtract 2 from the left"],
-                    explanation="Both sides must change the same way.", key=["Subtract 2 from both sides"])
+                    explanation_b64=b64("Both sides must change the same way."), key_b64=enc(["Subtract 2 from both sides"]))
         args.update(extra)
         return args
 
@@ -146,14 +154,14 @@ class ProtocolTest(ServerTest):
             self.assertIs(t["inputSchema"]["additionalProperties"], False)
             self.assertTrue(t["description"])
         pose = next(t for t in tools if t["name"] == "pose_question")["inputSchema"]["properties"]
-        self.assertEqual(list(pose), ["session_id", "kind", "step_id", "question", "options", "explanation",
-                                      "key", "multi", "free_text"])
+        self.assertEqual(list(pose), ["session_id", "kind", "step_id", "question", "options", "explanation_b64",
+                                      "key_b64", "multi", "free_text"])
         self.assertNotIn("—", json.dumps(tools, ensure_ascii=False))  # no em dashes
 
     def test_schema_problems_are_all_listed(self):
-        error = self.bad("pose_question", session_id=SID, kind="quiz", key="A", extra=1)
-        for part in ("kind must be one of", "key must be a list", "question is required",
-                     "explanation is required", "extra is not a known property"):
+        error = self.bad("pose_question", session_id=SID, kind="quiz", key_b64="QQ==", extra=1)
+        for part in ("kind must be one of", "key_b64 must be a list", "question is required",
+                     "explanation_b64 is required", "extra is not a known property"):
             self.assertIn(part, error)
 
     def test_optional_null_counts_as_left_out(self):
@@ -291,7 +299,7 @@ class SessionTest(ServerTest):
             "pose_question": self.mc(),
             "record_verdict": dict(question_id="q1", verdict="right"),
             "record_answer": dict(question_id="q1", text="t"),
-            "commit_problem": dict(statement="s", mode="recall", targets=["p_x"], cue_class="c", solution="s"),
+            "commit_problem": dict(statement="s", mode="recall", targets=["p_x"], cue_class="c", solution_b64=b64("s")),
             "conclude_problem": dict(problem_id="pr_x", outcome="solved", verdict="right", rung=None, retest=False),
         }
         for name, args in calls.items():
@@ -341,7 +349,7 @@ class GoalTest(ServerTest):
         out = self.study()
         gid = out["goal"]["id"]
         self.ok("pose_question", session_id=SID, kind="probe", question="What is x if x + 2 = 5?",
-                free_text=True, explanation="Subtract 2.", key=["3"])
+                free_text=True, explanation_b64=b64("Subtract 2."), key_b64=enc(["3"]))
         error = self.bad("save_probe", session_id=SID, goal_id=gid, strands=self.strands(), summary="s")
         self.assertIn("q1 is still open", error)
         self.s.append_log(gid, out["session"]["log"], {"type": "answer", "question": "q1", "freeText": "3"})
@@ -398,18 +406,18 @@ class GoalTest(ServerTest):
 class QuestionTest(ServerTest):
     def test_multiple_choice_checks(self):
         self.planned()
-        error = self.bad("pose_question", **self.mc(options=["A", "a ", "B"], key=["A", "C"]))
+        error = self.bad("pose_question", **self.mc(options=["A", "a ", "B"], key_b64=enc(["A", "C"])))
         self.assertIn("option 'a' is listed twice", error)
-        self.assertIn("key 'C' is not one of the options", error)
+        self.assertIn("key_b64[1] does not decode to one of the options", error)
         self.assertIn("several labels, so set multi true", error)
-        self.assertIn("must have 2 to 4 items", self.bad("pose_question", **self.mc(options=["A"], key=["A"])))
+        self.assertIn("must have 2 to 4 items", self.bad("pose_question", **self.mc(options=["A"], key_b64=enc(["A"]))))
         self.assertIn("must have 2 to 4 items",
-                      self.bad("pose_question", **self.mc(options=["A", "B", "C", "D", "E"], key=["A"])))
+                      self.bad("pose_question", **self.mc(options=["A", "B", "C", "D", "E"], key_b64=enc(["A"]))))
         self.assertIn("leave \"I don't know\" out",
-                      self.bad("pose_question", **self.mc(options=["A", "I don't know"], key=["A"])))
+                      self.bad("pose_question", **self.mc(options=["A", "I don't know"], key_b64=enc(["A"]))))
         self.assertIn("needs 2 to 4 options", self.bad("pose_question", **self.mc(options=None)))
-        self.assertIn("options[1] must not be empty", self.bad("pose_question", **self.mc(options=["A", " "], key=["A"])))
-        self.assertIn("key lists a label twice", self.bad("pose_question", **self.mc(options=["A", "B"], key=["A", "A"], multi=True)))
+        self.assertIn("options[1] must not be empty", self.bad("pose_question", **self.mc(options=["A", " "], key_b64=enc(["A"]))))
+        self.assertIn("key_b64 lists a label twice", self.bad("pose_question", **self.mc(options=["A", "B"], key_b64=enc(["A", "A"]), multi=True)))
 
     def test_steps_by_kind(self):
         self.planned()
@@ -426,14 +434,14 @@ class QuestionTest(ServerTest):
 
     def test_free_text_checks(self):
         self.planned()
-        error = self.bad("pose_question", **self.mc(free_text=True, multi=True, key=["a", "b"]))
+        error = self.bad("pose_question", **self.mc(free_text=True, multi=True, key_b64=enc(["a", "b"])))
         self.assertIn("free-text question has no options", error)
         self.assertIn("can't be multi", error)
         self.assertIn("one-item list", error)
 
     def test_options_shuffled_with_i_dont_know(self):
         gid, log_id = self.planned()
-        out = self.ok("pose_question", **self.mc(options=["Ay", "Be", "Ce"], key=["Ay", "Ce"], multi=True))
+        out = self.ok("pose_question", **self.mc(options=["Ay", "Be", "Ce"], key_b64=enc(["Ay", "Ce"]), multi=True))
         self.assertEqual(out["question_id"], "q1")
         self.assertEqual(sorted(out["options"]), sorted(["Ay", "Be", "Ce", store.IDK]))
         self.assertEqual(out["choices"], [f"{letter}. {label}" for letter, label in zip("ABCD", out["options"])])
@@ -443,15 +451,15 @@ class QuestionTest(ServerTest):
                          (out["options"], ["Ay", "Ce"], True, False))
         self.assertEqual(entry["explanation"], "Both sides must change the same way.")
         self.assertEqual(list(entry)[:3], ["n", "at", "type"])
-        four = self.ok("pose_question", **self.mc(options=["w", "x", "y", "z"], key=["x"]))
+        four = self.ok("pose_question", **self.mc(options=["w", "x", "y", "z"], key_b64=enc(["x"])))
         self.assertEqual(sorted(four["options"]), ["w", "x", "y", "z"])
-        orders = {tuple(self.ok("pose_question", **self.mc(options=["w", "x", "y", "z"], key=["x"]))["options"])
+        orders = {tuple(self.ok("pose_question", **self.mc(options=["w", "x", "y", "z"], key_b64=enc(["x"])))["options"])
                   for _ in range(30)}
         self.assertGreater(len(orders), 1)
 
     def test_single_key_may_be_multi(self):
         self.planned()
-        self.ok("pose_question", **self.mc(options=["Ay", "Be", "Ce"], key=["Ay"], multi=True))
+        self.ok("pose_question", **self.mc(options=["Ay", "Be", "Ce"], key_b64=enc(["Ay"]), multi=True))
 
     def test_option_like_a_choice_letter_is_refused(self):
         self.planned()
@@ -460,12 +468,12 @@ class QuestionTest(ServerTest):
                 error = self.bad("pose_question", **self.mc(options=[label, "Subtract 2 from both sides"]))
                 self.assertIn(f"option {label!r} reads like a choice letter", error)
         self.ok("pose_question", **self.mc(options=["E", "A and B", "Subtract 2 from both sides"],
-                                           key=["Subtract 2 from both sides"]))
+                                           key_b64=enc(["Subtract 2 from both sides"])))
 
     def test_free_text_has_no_choices(self):
         self.planned()
         out = self.ok("pose_question", session_id=SID, kind="check", step_id="s1", question="Why?",
-                      free_text=True, explanation="e", key=["Because both sides change alike"])
+                      free_text=True, explanation_b64=b64("e"), key_b64=enc(["Because both sides change alike"]))
         self.assertNotIn("choices", out)
 
     def test_second_question_closes_the_first(self):
@@ -473,7 +481,7 @@ class QuestionTest(ServerTest):
         first = self.ok("pose_question", **self.mc())
         self.assertNotIn("closed", first)
         second = self.ok("pose_question", session_id=SID, kind="check", step_id="s1", question="Why?",
-                         free_text=True, explanation="e", key=["Because both sides change alike"])
+                         free_text=True, explanation_b64=b64("e"), key_b64=enc(["Because both sides change alike"]))
         self.assertEqual((second["question_id"], second["closed"]), ("q2", "q1"))
         self.assertNotIn("options", second)
         entries = self.log(gid, log_id)
@@ -495,7 +503,7 @@ class QuestionTest(ServerTest):
     def test_record_verdict_and_answer(self):
         gid, log_id = self.planned()
         self.ok("pose_question", session_id=SID, kind="check", step_id="s1", question="Why?", free_text=True,
-                explanation="e", key=["model"])
+                explanation_b64=b64("e"), key_b64=enc(["model"]))
         self.assertEqual(self.ok("record_answer", session_id=SID, question_id="q1", text="Both sides"),
                          {"question_id": "q1"})
         answer = self.log(gid, log_id)[-1]
@@ -522,12 +530,49 @@ class QuestionTest(ServerTest):
         self.assertIn("closed as skipped", self.bad("record_verdict", session_id=SID, question_id="q1", verdict="right"))
         self.assertIn("graded by code", self.bad("record_verdict", session_id=SID, question_id="q2", verdict="wrong"))
 
+    def test_keys_arrive_in_base64(self):
+        gid, log_id = self.planned()
+        self.assertIn("key is not a known property",
+                      self.bad("pose_question", **self.mc(key=["Subtract 2 from both sides"])))
+        for bad in ("not base64!", "QQ", b64("   "), "/w=="):  # not the alphabet, no padding, blank, not UTF-8
+            with self.subTest(bad=bad):
+                error = self.bad("pose_question", **self.mc(key_b64=[bad], explanation_b64=bad))
+                self.assertIn("key_b64[0] is not base64 of UTF-8 text", error)
+                self.assertIn("explanation_b64 is not base64 of UTF-8 text", error)
+        # An error never shows decoded text: the transcript (ctrl+o) shows tool results too.
+        error = self.bad("pose_question", **self.mc(key_b64=enc(["the secret answer"])))
+        self.assertIn("key_b64[0] does not decode to one of the options", error)
+        self.assertNotIn("secret", error)
+        wrapped = b64("Both sides must change the same way.")
+        self.ok("pose_question", **self.mc(explanation_b64=wrapped[:10] + "\n" + wrapped[10:]))  # wrapped lines
+        entry = self.log(gid, log_id)[-1]
+        self.assertEqual((entry["key"], entry["explanation"]),
+                         (["Subtract 2 from both sides"], "Both sides must change the same way."))
+
+    def test_an_open_question_is_sealed_in_tool_results(self):
+        gid, log_id = self.planned()
+        self.ok("pose_question", **self.mc())
+        q2 = self.ok("pose_question", session_id=SID, kind="check", step_id="s1", question="Why?",
+                     free_text=True, explanation_b64=b64("e"), key_b64=enc(["Because both sides change alike"]))
+        self.assertEqual(q2["closed"], "q1")
+        entries = self.ok("read_session", goal_id=gid)["entries"]
+        q1, q2 = [e for e in entries if e["type"] == "question"]
+        self.assertEqual((q1["key"], q1["explanation"]), (["Subtract 2 from both sides"], "Both sides must change the same way."))
+        self.assertNotIn("key", q2)
+        self.assertNotIn("explanation", q2)
+        self.assertEqual((q2["key_b64"], q2["explanation_b64"]), (enc(["Because both sides change alike"]), b64("e")))
+        self.assertEqual(self.log(gid, log_id)[-1]["key"], ["Because both sides change alike"])  # the log keeps plaintext
+        self.ok("end_session", session_id=SID)
+        last = self.ok("start_session", session_id=SID, goal_id=gid)["lastSitting"]
+        self.assertEqual([e.get("key_b64") for e in last if e["type"] == "question"],
+                         [None, enc(["Because both sides change alike"])])
+
     def test_multi_labels_may_not_hold_a_comma(self):
         self.planned()
         options = ["x = 2, y = 3", "x = 3"]
-        error = self.bad("pose_question", **self.mc(options=options, key=options, multi=True))
+        error = self.bad("pose_question", **self.mc(options=options, key_b64=enc(options), multi=True))
         self.assertIn("'x = 2, y = 3' holds \", \"", error)
-        self.ok("pose_question", **self.mc(options=options, key=["x = 3"]))
+        self.ok("pose_question", **self.mc(options=options, key_b64=enc(["x = 3"])))
 
 
 class PracticeTest(ServerTest):
@@ -539,7 +584,7 @@ class PracticeTest(ServerTest):
 
     def commit(self, targets, **extra):
         args = dict(session_id=SID, statement="Solve 3x + 4 = 19.", mode="recall", targets=targets,
-                    cue_class="weak", solution="Subtract 4, then divide by 3: x = 5.")
+                    cue_class="weak", solution_b64=b64("Subtract 4, then divide by 3: x = 5."))
         args.update(extra)
         return self.ok("commit_problem", **args)["problem_id"]
 
@@ -571,7 +616,7 @@ class PracticeTest(ServerTest):
         a, _, _ = self.practice()
         first = self.commit([a])
         error = self.bad("commit_problem", session_id=SID, statement="s", mode="recall", targets=[a],
-                         cue_class="c", solution="s")
+                         cue_class="c", solution_b64=b64("s"))
         self.assertIn(f"problem {first} is still open", error)
         self.ok("conclude_problem", session_id=SID, problem_id=first, outcome="movedOn", verdict="wrong", rung="R4",
                 miss_class="cue", retest=True)
@@ -580,12 +625,18 @@ class PracticeTest(ServerTest):
     def test_commit_checks(self):
         a, _, _ = self.practice()
         error = self.bad("commit_problem", session_id=SID, statement="s", mode="guess", targets=[a, a, "p_zzzz"],
-                         cue_class="c", solution="s")
+                         cue_class="c", solution_b64=b64("s"))
         self.assertIn("mode must be one of", error)
         error = self.bad("commit_problem", session_id=SID, statement="s", mode="recall", targets=[a, a, "p_zzzz"],
-                         cue_class="c", solution="s")
+                         cue_class="c", solution_b64=b64("s"))
         self.assertIn("'p_zzzz' is not a proposition or chain id", error)
         self.assertIn("lists an id twice", error)
+        self.assertIn("solution is not a known property", self.bad(
+            "commit_problem", session_id=SID, statement="s", mode="recall", targets=[a], cue_class="c", solution="x = 5"))
+        error = self.bad("commit_problem", session_id=SID, statement="s", mode="recall", targets=[a], cue_class="c",
+                         solution_b64="x = 5")
+        self.assertIn("solution_b64 is not base64 of UTF-8 text", error)
+        self.assertNotIn("x = 5", error)
 
     def test_conclude_checks(self):
         a, _, _ = self.practice()
@@ -608,7 +659,7 @@ class PracticeTest(ServerTest):
         a = self.props("An idea")[0]
         self.study()
         error = self.bad("commit_problem", session_id=SID, statement="s", mode="recall", targets=[a],
-                         cue_class="c", solution="s")
+                         cue_class="c", solution_b64=b64("s"))
         self.assertIn("works in practice sessions", error)
 
 

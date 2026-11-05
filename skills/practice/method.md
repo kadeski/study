@@ -63,7 +63,7 @@ Commit first. Before the learner sees anything:
 2. **Solve it yourself**, step by step. If you can't reach one clean answer, fix the problem or drop it.
 3. **Look for a shortcut** that skips the target: guessing from the numbers, a simpler idea that also works, a hint in the wording, the shape of the expected answer. If you find one, change the problem to close it, then solve it again.
 4. **Write the solution** for the learner: the answer, the worked steps, and the idea it used, stated in full. For discrimination, also say why the lure fails.
-5. **Call `commit_problem`.** Show the statement only after it returns, word for word as committed.
+5. **Call `commit_problem`** with the solution as `solution_b64`, its base64. Write the solution out in your thinking, never in plain text in the chat or a tool call. Show the statement only after it returns, word for word as committed.
 
 ## Hints
 
