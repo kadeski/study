@@ -159,8 +159,10 @@ TOOLS = [
     ("pose_question",
      "Commit a graded question before asking it (probe, predict or check; ungraded questions never "
      "come here). Multiple choice: 2 to 4 options and a key of labels from them; the server adds "
-     "\"I don't know\" when there is room, shuffles, and returns the options to ask in that order. "
-     "Free text: free_text true, no options, and a key holding the model answer. Closes any open "
+     "\"I don't know\" when there is room, shuffles, and returns the options in that order and as "
+     "lettered choices to end the message with. "
+     "Free text: free_text true, no options, and a key holding the model answer. The key and the "
+     "explanation arrive in base64, so the learner can't read them at a glance. Closes any open "
      "question of this session as skipped.",
      {
          "session_id": _SESSION,
@@ -169,12 +171,14 @@ TOOLS = [
          "question": _text("The question as it will be asked."),
          "options": {"type": "array", "minItems": 2, "maxItems": 4, "items": {"type": "string", "minLength": 1},
                      "description": "Multiple choice: 2 to 4 distinct labels. Leave out for free text."},
-         "explanation": _text("Why the right answer is right and the others are wrong. Write it before the key."),
-         "key": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1},
-                 "description": "Multiple choice: the right labels. Free text: one item, the model answer."},
+         "explanation_b64": _text("Base64 (UTF-8, padded) of why the right answer is right and the others "
+                                  "are wrong. Write it before the key."),
+         "key_b64": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1},
+                     "description": "Base64 (UTF-8, padded) of each item. Multiple choice: the right labels. "
+                                    "Free text: one item, the model answer."},
          "multi": {"type": "boolean", "description": "True when the learner may pick several labels; needed when the key has several."},
          "free_text": {"type": "boolean", "description": "True for a question answered in chat."},
-     }, ["session_id", "kind", "question", "explanation", "key"]),
+     }, ["session_id", "kind", "question", "explanation_b64", "key_b64"]),
     ("record_verdict",
      "Grade an answer: a free-text answer, or an \"Other\" answer to a multiple-choice question. "
      "Refused for a question code already graded or the server closed as skipped; a later "
@@ -202,8 +206,8 @@ TOOLS = [
          "targets": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1},
                      "description": "The proposition or chain ids the problem practices."},
          "cue_class": _text("The kind of cue the statement gives."),
-         "solution": _text("The model solution, revealed after conclude_problem."),
-     }, ["session_id", "statement", "mode", "targets", "cue_class", "solution"]),
+         "solution_b64": _text("Base64 (UTF-8, padded) of the model solution, revealed after conclude_problem."),
+     }, ["session_id", "statement", "mode", "targets", "cue_class", "solution_b64"]),
     ("conclude_problem",
      "Practice: conclude the open problem. Returns the committed solution to reveal and the "
      "targets' new due dates.",
@@ -277,6 +281,16 @@ TOOLS = [
      "true when the file is new or differs from its last import, or with force.",
      {"path": _text("The file's absolute path."),
       "force": {"type": "boolean", "description": "True to import it again even when unchanged."}}, ["path"]),
+    ("forget_source",
+     "Take an imported notes file's ideas out of the graph. A proposition or chain this file alone "
+     "vouched for is deleted; one another goal or file also taught, or argues from, stays and just "
+     "stops citing this file. With keep, only this file's ideas outside keep go, which is how a re-import drops what "
+     "the file no longer says. Give source_id or path.",
+     {"source_id": _text("The source id, like src_a1b2."),
+      "path": _text("The file's absolute path, as it was imported. The file need not still exist."),
+      "keep": {"type": "array", "items": {"type": "string", "minLength": 1},
+               "description": "Proposition and chain ids to keep: the ids the file's latest extraction merged."}},
+     []),
     ("read_session",
      "A session log's entries: the goal's newest log, or log_id. goal_id null with a log_id reads a practice log.",
      {"goal_id": _GOAL_ID, "log_id": _text("A log id, like 2026-10-25-a1b2.")}, []),
@@ -650,7 +664,7 @@ class Server:
             "session": {"log": log_id, "mode": "study"},
             "goal": goal,
             "plan": self.tool_read_plan(goal["id"])["plan"],
-            "lastSitting": last_sitting,
+            "lastSitting": store.seal_open_questions(last_sitting),
             "graph": self.tool_graph_overview(goal["id"]),
             "paths": {"goal": str(folder.absolute()), "media": str((folder / "media").absolute())},
         }
@@ -789,11 +803,21 @@ class Server:
 
     # Questions (spec section 5)
 
-    def tool_pose_question(self, session_id, kind, question, explanation, key,
+    def tool_pose_question(self, session_id, kind, question, explanation_b64, key_b64,
                            step_id=None, options=None, multi=False, free_text=False):
         marker = self._marker(session_id, "study", "pose_question")
         goal_id = marker["goal"]
         problems = []
+        # Errors about these name the field only: a tool result shows in the transcript too.
+        explanation = store.decode_b64(explanation_b64)
+        if explanation is None:
+            problems.append("explanation_b64 is not base64 of UTF-8 text: encode it again")
+        key = []
+        for i, item in enumerate(key_b64):
+            text = store.decode_b64(item)
+            if text is None:
+                problems.append(f"key_b64[{i}] is not base64 of UTF-8 text: encode it again")
+            key.append(text)
         if kind not in STEP_KINDS:
             if step_id is not None:
                 problems.append("a probe question has no step: leave step_id out")
@@ -806,9 +830,10 @@ class Server:
                 problems.append(f"step_id {step_id!r} needs a plan: call save_plan first")
             elif step_id not in steps:
                 problems.append(f"step_id {step_id!r} is not a plan step; the steps are {', '.join(steps)}")
-        key = [k.strip() for k in key]
+        readable = None not in key
+        key = [k.strip() for k in key if k is not None]
         if len(set(key)) != len(key):
-            problems.append("key lists a label twice")
+            problems.append("key_b64 lists a label twice")
         labels = None
         if free_text:
             if options is not None:
@@ -816,7 +841,7 @@ class Server:
             if multi:
                 problems.append("a free-text question can't be multi: leave multi out")
             if len(key) != 1:
-                problems.append("a free-text question's key is a one-item list holding the model answer")
+                problems.append("a free-text question's key_b64 is a one-item list holding the model answer")
         elif options is None:
             problems.append("a multiple-choice question needs 2 to 4 options; for free text set free_text true")
         else:
@@ -827,14 +852,19 @@ class Server:
                     problems.append(f"leave {store.IDK!r} out of options: the server adds it")
                 elif label.casefold() in seen:
                     problems.append(f"option {label!r} is listed twice")
+                elif store.CHOICE_LETTER.fullmatch(label):
+                    problems.append(f"option {label!r} reads like a choice letter, and the learner answers "
+                                    "with letters: reword it")
                 elif multi and ", " in label:
                     problems.append(f"option {label!r} holds \", \", which joins the picks of a multi-select "
                                     "answer: reword it without the comma")
                 seen.add(label.casefold())
-            for k in key:
-                if k not in labels:
-                    problems.append(f"key {k!r} is not one of the options")
-            if len(key) > 1 and not multi:
+            if readable:
+                for i, k in enumerate(key):
+                    if k not in labels:
+                        problems.append(f"key_b64[{i}] does not decode to one of the options: "
+                                        "copy the label exactly and encode it again")
+            if len(key_b64) > 1 and not multi:
                 problems.append("the key has several labels, so set multi true")
         if problems:
             raise ToolError(problems)
@@ -872,6 +902,7 @@ class Server:
         out = {"question_id": question_id}
         if labels is not None:
             out["options"] = labels
+            out["choices"] = store.choices(labels)
         out.update(result)
         return out
 
@@ -901,10 +932,13 @@ class Server:
 
     # Practice (spec sections 2 and 8)
 
-    def tool_commit_problem(self, session_id, statement, mode, targets, cue_class, solution):
+    def tool_commit_problem(self, session_id, statement, mode, targets, cue_class, solution_b64):
         marker = self._marker(session_id, "practice", "commit_problem")
         props, chains = self.store.graph()
         problems = []
+        solution = store.decode_b64(solution_b64)
+        if solution is None:
+            problems.append("solution_b64 is not base64 of UTF-8 text: encode it again")
         for t in targets:
             if t not in props and t not in chains:
                 problems.append(f"target {t!r} is not a proposition or chain id")
@@ -998,9 +1032,16 @@ class Server:
                            if node_id is None or node_id == c.get("conclusion") or node_id in c.get("premises", [])]}
 
     def tool_graph_merge(self, origin, propositions, chains):
+        with self.store.graph_lock():
+            return self._graph_merge(origin, propositions, chains)
+
+    def _graph_merge(self, origin, propositions, chains):
         problems = []
         source = self._origin(origin, problems)
         props, old_chains = self.store.graph()
+        # Ids are never reissued, even after a delete: practice history is keyed on them.
+        used = {line.get("id") for rel in ("graph/propositions.jsonl", "graph/chains.jsonl")
+                for line in self.store.read_jsonl(rel)}
         texts = {pid: {_norm(t) for t in [p.get("statement")] + p.get("aliases", []) if isinstance(t, str)}
                  for pid, p in props.items()}
         by_text = {}
@@ -1025,7 +1066,7 @@ class Server:
                 continue
             target = same if same is not None else by_text.get(_norm(statement))
             if target is None:
-                target = store.new_id("p_", taken=set(props) | {pid for pid, _ in new_props})
+                target = store.new_id("p_", taken=used | {pid for pid, _ in new_props})
                 new_props.append((target, statement))
                 by_text[_norm(statement)] = target
             elif target in props:
@@ -1066,7 +1107,7 @@ class Server:
             sig = (frozenset(premises), conclusion)
             cid = chain_sigs.get(sig)
             if cid is None:
-                cid = store.new_id("c_", taken=set(old_chains) | {c for c, _, _ in new_chains})
+                cid = store.new_id("c_", taken=used | {c for c, _, _ in new_chains})
                 new_chains.append((cid, premises, conclusion))
                 chain_sigs[sig] = cid
             elif cid in old_chains and cid not in linked_chains:
@@ -1099,6 +1140,7 @@ class Server:
             })
         return {
             "ids": ids,
+            "chain_ids": touched_chains,
             "added": {"propositions": len(new_props), "chains": len(new_chains)},
             "linked": len(linked) + len(linked_chains),
         }
@@ -1157,9 +1199,89 @@ class Server:
         if source_id is None:
             source_id = store.new_id("src_", taken={line.get("id") for line in lines})
         if changed:
-            self.store.append_jsonl("graph/sources.jsonl",
-                                    {"id": source_id, "path": str(real), "sha256": sha, "at": store.now()})
+            line = {"id": source_id, "path": str(real), "sha256": sha, "at": store.now()}
+            if given.is_symlink():
+                line["given"] = str(given.absolute())  # so the file can be forgotten by this path once the link is gone
+            self.store.append_jsonl("graph/sources.jsonl", line)
         return {"source_id": source_id, "changed": changed, "path": str(real)}
+
+    def tool_forget_source(self, source_id=None, path=None, keep=None):
+        if (source_id is None) == (path is None):
+            raise ToolError("give source_id or path, not both")
+        with self.store.graph_lock():
+            return self._forget_source(source_id, path, keep)
+
+    def _forget_source(self, source_id, path, keep):
+        lines = self.store.read_jsonl("graph/sources.jsonl")
+        if path is not None:
+            given = Path(os.path.expanduser(path))
+            if not given.is_absolute():
+                raise ToolError(f"path {path!r} must be absolute")
+            names = {str(given.resolve()), str(given.absolute())}
+            ids = [line.get("id") for line in lines
+                   if (line.get("path") in names or line.get("given") in names) and line.get("id")]
+            if not ids:
+                raise ToolError(f"{given.resolve()} was never imported")
+            source_id = ids[-1]
+        mine = [line for line in lines if line.get("id") == source_id and line.get("path")]
+        if not mine:
+            raise ToolError(f"{source_id!r} is not a registered source id")
+        pruning = keep is not None
+        keep = set(keep or [])
+        props, chains = self.store.graph()
+        # A kept chain keeps its ends: the extractor names an existing idea by id without merging it again.
+        for cid in list(keep):
+            if cid in chains:
+                keep.update(chains[cid].get("premises", []) + [chains[cid].get("conclusion")])
+
+        def cites(node):
+            return any(isinstance(e, dict) and e.get("source") == source_id for e in node.get("sources", []))
+
+        def cited_elsewhere(node):
+            return any(not (isinstance(e, dict) and e.get("source") == source_id) for e in node.get("sources", []))
+
+        def stays(node_id, node):
+            return node_id in keep or not cites(node) or cited_elsewhere(node)
+
+        # A chain that stays keeps its ends: another file's argument may name this file's idea by id.
+        held = {e for cid, c in chains.items() if stays(cid, c) for e in c.get("premises", []) + [c.get("conclusion")]}
+        dead, unlinked = [], []
+        for pid, p in props.items():
+            if cites(p) and pid not in keep:
+                (unlinked if cited_elsewhere(p) or pid in held else dead).append(pid)
+        gone = set(dead)
+        dead_chains, unlinked_chains = [], []
+        for cid, c in chains.items():
+            if c.get("conclusion") in gone or any(e in gone for e in c.get("premises", [])):
+                dead_chains.append(cid)
+            elif cites(c) and cid not in keep:
+                (unlinked_chains if cited_elsewhere(c) else dead_chains).append(cid)
+        # An idea with no source left exists only while a chain names it. Once the last such chain
+        # goes, here or in an earlier call, nothing can cite it again, so it goes too.
+        ends = {e for cid, c in chains.items() if cid not in dead_chains
+                for e in c.get("premises", []) + [c.get("conclusion")]}
+        for pid, p in props.items():
+            if pid not in gone and pid not in keep and pid not in ends and not p.get("sources"):
+                dead.append(pid)
+        for pid in dead:
+            self.store.append_jsonl("graph/propositions.jsonl", {"op": "delete", "id": pid})
+        for pid in unlinked:
+            self.store.append_jsonl("graph/propositions.jsonl", {"op": "forget", "id": pid, "source": source_id})
+        for cid in dead_chains:
+            self.store.append_jsonl("graph/chains.jsonl", {"op": "delete", "id": cid})
+        for cid in unlinked_chains:
+            self.store.append_jsonl("graph/chains.jsonl", {"op": "forget", "id": cid, "source": source_id})
+        changed = bool(dead or unlinked or dead_chains or unlinked_chains)
+        if not pruning and (changed or not mine[-1].get("removed")):
+            # Without a sha256, the next register_source of this path counts the file as changed.
+            self.store.append_jsonl("graph/sources.jsonl",
+                                    {"id": source_id, "path": mine[-1]["path"], "removed": True, "at": store.now()})
+        return {
+            "source_id": source_id,
+            "path": mine[-1]["path"],
+            "removed": {"propositions": len(dead), "chains": len(dead_chains)},
+            "unlinked": {"propositions": len(unlinked), "chains": len(unlinked_chains)},
+        }
 
     # Reading logs and opening pages
 
@@ -1176,7 +1298,8 @@ class Server:
         elif not self.store.path(self.store.log_rel(goal_id, log_id)).exists():
             where = f"goal {goal_id}" if goal_id else "practice"
             raise ToolError(f"No log {log_id!r} for {where}")
-        return {"goal": goal_id, "log": log_id, "entries": self.store.read_log(goal_id, log_id)}
+        return {"goal": goal_id, "log": log_id,
+                "entries": store.seal_open_questions(self.store.read_log(goal_id, log_id))}
 
     def tool_open_graph_page(self, goal_id=None):
         if goal_id is not None:

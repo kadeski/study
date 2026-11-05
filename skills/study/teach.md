@@ -33,13 +33,14 @@ A check that fails is repaired before anything is built on it.
 
 ## Moving on
 
-Move past a step when its claim is obvious to the learner: the latest check on it was right, and every fragile answer in it has been checked again in a new form. Then do `SKILL.md` step 5: update the tasks and start the extractor.
+Move past a step when its claim is obvious to the learner: the latest check on it was right, and every fragile answer in it has been checked again in a new form. Then do `SKILL.md` step 5: update the tasks and start the extractor, in the same turn as the next step's `pose_question`, before the message.
 
 **Fragile answers.** Keep a list of answers that were right but rested on a guess or a shaky reason. Check each one again later, in a new form. A check in a later step that draws on the earlier idea does this well.
 
 ## Messages
 
 - One move per message, ending with its question. A few sentences of teaching, not a page.
+- The message is the turn's last thing. Make the turn's tool calls first (`pose_question`, `record_verdict`, task updates, helpers), then write the verdict, the move and the question as one message (`questions.md`, "Tools first, then one message"). Teaching written before a tool call can reach the learner as a one-line summary.
 - Use the same word for the same thing every time. To a learner, a new word is a new idea.
 - Use the learner's words for things where they are right.
 - If the learner says how they like to learn (more examples, shorter steps, a picture first), do that.
@@ -48,15 +49,15 @@ Move past a step when its claim is obvious to the learner: the latest check on i
 
 - On the path: answer it as a move, then check it.
 - Off the path: answer in a line or two, then go back to the step.
-- One you can't answer with confidence: start the researcher (`SKILL.md`, Helpers), go on with the step, and answer when the brief is back.
+- One you can't answer with confidence: start the researcher (`SKILL.md`, Helpers) before writing the message, go on with the step, and answer when the brief is back.
 
 ## Pictures and demos
 
-When a step would land better with a picture or with something to try, start the visual-maker or demo-builder a step ahead (`SKILL.md`, Helpers). When the lesson reaches it, open it with `open_in_browser` and say in one line what to look at. Teach from it, and check after it like any other move.
+When a step would land better with a picture or with something to try, start the visual-maker or demo-builder a step ahead (`SKILL.md`, Helpers). When the lesson reaches it, open it with `open_in_browser`, then in the turn's message say in one line what to look at. Teach from it, and check after it like any other move.
 
 ## When the plan is wrong
 
-The lesson can show a missing step, or a step the learner already holds. Change the plan with `save_plan` and the whole new list, update the tasks (`plan.md`, Tasks), and tell the learner in one line what changed.
+The lesson can show a missing step, or a step the learner already holds. Change the plan with `save_plan` and the whole new list, update the tasks (`plan.md`, Tasks), and then, in the turn's message, tell the learner in one line what changed.
 
 ## The end
 

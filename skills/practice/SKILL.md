@@ -46,7 +46,7 @@ Then go to the first problem.
 ## Each problem
 
 1. **Choose.** Pick the target and mode, and set the difficulty (`method.md`: "Choosing the next target", "Modes", "Difficulty").
-2. **Commit.** Build the problem and solve it first (`method.md`: "Building a problem"). Then `commit_problem({session_id, statement, mode, targets, cue_class, solution})`. Keep the returned `problem_id`. The call is refused while a problem is open; conclude that one first.
+2. **Commit.** Build the problem and solve it first (`method.md`: "Building a problem"). Then `commit_problem({session_id, statement, mode, targets, cue_class, solution_b64})`, with the solution in base64 (UTF-8, `=` padding), so a learner who opens the transcript (ctrl+o) doesn't read it. Keep the returned `problem_id`. The call is refused while a problem is open; conclude that one first.
 3. **Pose.** Show the statement in plain chat, exactly as committed. Nothing else: no mode, no target, no difficulty, no hint. End the turn. The learner works.
 4. **Respond.** For each message from the learner, while the problem is open:
    - **A hint request:** give the next rung (`method.md`: "Hints"). One rung per request. End the turn.
@@ -81,6 +81,7 @@ The hook adds a message like `Study practice is on (log <id>), open problem pr_x
 
 ## Rules that never drop
 
+- Tools first, then one message. Make every tool call of a turn before writing to the learner, then write one message that ends the turn: text written before a tool call can reach them as a one-line summary. So `commit_problem` comes before the statement, and `conclude_problem` before the verdict and the reveal.
 - Commit before showing. The statement never names its target, and no hint below R3 names it.
 - Never reveal the solution before `conclude_problem`.
 - One rung per hint request.

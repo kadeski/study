@@ -26,9 +26,9 @@ Before saving, test each step: does its claim follow from what the learner holds
 
 ## 3. Save and show
 
-Call `save_plan({session_id, goal_id, steps})`. It checks for unique ids, known dependencies and no cycles; fix what it lists and call again.
+Call `save_plan({session_id, goal_id, steps})`. It checks for unique ids, known dependencies and no cycles; fix what it lists and call again. Then create the tasks (Tasks, below).
 
-Show the plan as a numbered list, one line per step: the title and the claim. Then ask in one ungraded AskUserQuestion whether to start or to change something. A change means `save_plan` again with the whole new list, then the task changes below.
+With every tool call of the turn done, write one message that ends the turn: the plan as a numbered list, one line per step with the title and the claim, and as its last line the question "Start, or change something?". Ask it in chat, not with AskUserQuestion: a list written before a tool call can reach the learner as a one-line summary (`questions.md`, "Tools first, then one message"). A change means `save_plan` again with the whole new list, then the task changes below.
 
 Teaching starts with the first question tied to a step. Read `teach.md` and `questions.md`.
 

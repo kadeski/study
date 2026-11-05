@@ -5,8 +5,12 @@ Standard library only; runs on Python 3.9.
 
 - JSON files are written to a temp file, then renamed.
 - JSONL files are append-only, one line per write, under a file lock.
+- A read of the graph followed by writes that depend on it runs under `graph_lock`, so two
+  writers can't both decide from the same stale graph.
 - A data folder with a newer `format` than FORMAT refuses every write.
 """
+import base64
+import binascii
 import contextlib
 import json
 import os
@@ -28,6 +32,9 @@ FORMAT = 1
 MARKER_TTL = 24 * 3600
 DEFAULT_DATA_DIR = "~/Study"
 IDK = "I don't know"
+# A multiple-choice question is asked in chat with lettered choices, and the learner may answer
+# with the letter: "b", "B.", "b)" or "(b)". No option label may look like one.
+CHOICE_LETTER = re.compile(r"\(([A-Da-d])\)|([A-Da-d])[.)]?")
 VERDICTS = ("right", "partly", "wrong", "dontKnow", "skipped")
 
 _ALPHABET = string.ascii_lowercase + string.digits
@@ -110,7 +117,8 @@ def _exclusive(handle, path):
         try:
             os.mkdir(lock)
             break
-        except FileExistsError:
+        except (FileExistsError, PermissionError):
+            # Windows answers PermissionError while another process is still removing the lock.
             if time.time() > deadline:
                 raise StoreError(f"{path} is locked; delete {lock} if no Study process is running")
             time.sleep(0.02)
@@ -207,6 +215,20 @@ class Store:
         self._append(rel, lambda existing: obj, read=False)
         return obj
 
+    @contextlib.contextmanager
+    def graph_lock(self):
+        """Holds the graph-wide lock (`graph/.lock`) while the block runs.
+
+        For a read of the graph files followed by appends that depend on it. The lock is its own
+        file, so the appends' per-file locks nest inside it.
+        """
+        self.check_writable()
+        path = self.path("graph/.lock")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "a+b") as f:
+            with _exclusive(f, path):
+                yield
+
     def append_entry(self, rel, entry):
         """Appends a session log entry, adding `n` (last n + 1) and `at` under the lock.
 
@@ -244,13 +266,13 @@ class Store:
     # Paths
 
     def goal_rel(self, goal_id, *parts):
-        return str(Path("goals", check_id(goal_id, "goal_id"), *parts))
+        return Path("goals", check_id(goal_id, "goal_id"), *parts).as_posix()
 
     def log_rel(self, goal_id, log_id):
         """The session log of `log_id`: under the goal, or under practice/ when goal_id is None."""
         name = check_id(log_id, "log_id") + ".jsonl"
         if goal_id is None:
-            return str(Path("practice", "sessions", name))
+            return Path("practice", "sessions", name).as_posix()
         return self.goal_rel(goal_id, "sessions", name)
 
     # Goals
@@ -333,7 +355,7 @@ class Store:
     # Active markers: <data>/active/<claude-session-id>.json = {mode, goal, log, started}
 
     def marker_rel(self, session_id):
-        return str(Path("active", check_id(session_id, "session_id") + ".json"))
+        return Path("active", check_id(session_id, "session_id") + ".json").as_posix()
 
     def write_marker(self, session_id, marker):
         self.write_json(self.marker_rel(session_id), marker)
@@ -383,7 +405,8 @@ def fold(ops):
     """Folds a graph operation log (spec section 8, Graph) into id -> node.
 
     Ops: add (the node's fields), source (another place it was taught), alias (another wording),
-    delete. Ops on unknown ids are ignored. Every node gets `sources`; propositions get `aliases`.
+    forget (drop every `sources` entry from one imported source), delete. Ops on unknown ids are
+    ignored. Every node gets `sources`; propositions get `aliases`.
     """
     nodes = {}
     for op in ops:
@@ -399,6 +422,10 @@ def fold(ops):
                 nodes[node_id]["sources"].append(op["source"])
             elif kind == "alias" and op.get("text"):
                 nodes[node_id].setdefault("aliases", []).append(op["text"])
+            elif kind == "forget" and op.get("source") is not None:
+                nodes[node_id]["sources"] = [
+                    entry for entry in nodes[node_id]["sources"]
+                    if not (isinstance(entry, dict) and entry.get("source") == op["source"])]
             elif kind == "delete":
                 del nodes[node_id]
     return nodes
@@ -443,6 +470,83 @@ def step_statuses(plan, entries):
         statuses[s] = "visited"
     statuses[current] = "current"
     return statuses
+
+
+def decode_b64(value):
+    """The text `value` encodes in base64 (standard alphabet, padded, UTF-8), else None.
+
+    Answer keys, explanations and practice solutions reach the server this way, so a learner who
+    opens the transcript (ctrl+o) can't read them at a glance. Whitespace inside is ignored, and
+    text that is blank once decoded counts as unreadable.
+    """
+    if not isinstance(value, str):
+        return None
+    try:
+        text = base64.b64decode("".join(value.split()), validate=True).decode("utf-8")
+    except (binascii.Error, ValueError):
+        return None
+    return text if text.strip() else None
+
+
+def encode_b64(text):
+    return base64.b64encode(text.encode("utf-8")).decode("ascii")
+
+
+def seal_open_questions(entries):
+    """`entries` with each unanswered question's `key` and `explanation` in base64.
+
+    A question with no `answer` and no `verdict` entry is still open to the learner, so a tool
+    result that shows it gives `key_b64` and `explanation_b64` in place of the plain fields.
+    """
+    done = {e.get("question") for e in entries if e.get("type") in ("answer", "verdict")}
+    out = []
+    for e in entries:
+        if e.get("type") == "question" and e.get("id") not in done:
+            e = dict(e)
+            key, explanation = e.pop("key", None), e.pop("explanation", None)
+            e["key_b64"] = [encode_b64(k) for k in key or []]
+            e["explanation_b64"] = encode_b64(explanation) if isinstance(explanation, str) else None
+        out.append(e)
+    return out
+
+
+def choices(options):
+    """The options as the lettered lines a question is asked with: ["A. 15", "B. 5", ...]."""
+    return [f"{chr(ord('A') + i)}. {label}" for i, label in enumerate(options)]
+
+
+def pick_in_chat(text, options, multi):
+    """The option labels a chat answer picks, or None when code can't tell.
+
+    Only an exact answer counts: one letter (`b`, `B.`, `b)`, `(b)`) or one label, ignoring case
+    and outer spaces; for a `multi` question also a comma-separated list of those. Anything else,
+    reasoning included, is for the teacher to grade: a wrong code verdict can't be undone.
+    """
+    def one(part):
+        part = part.strip()
+        for label in options:
+            if part.casefold() == label.strip().casefold():
+                return label
+        m = CHOICE_LETTER.fullmatch(part)
+        if m:
+            index = ord((m.group(1) or m.group(2)).upper()) - ord("A")
+            if index < len(options):
+                return options[index]
+        return None
+
+    whole = one(text)
+    if whole is not None:
+        return [whole]
+    if not multi or "," not in text:
+        return None
+    picks = []
+    for part in text.split(","):
+        label = one(part)
+        if label is None:
+            return None
+        if label not in picks:
+            picks.append(label)
+    return picks
 
 
 def grade(question, picked):

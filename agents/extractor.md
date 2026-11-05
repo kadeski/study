@@ -1,7 +1,7 @@
 ---
 name: extractor
 description: Study helper that adds what was taught to the knowledge graph as propositions and chains. Start it in the background after each plan step the lesson moves past, passing the goal, log and step ids and the step's teaching text, or for each imported notes file, passing the source id and path.
-tools: Read, mcp__plugin_study_study__graph_find, mcp__plugin_study_study__graph_chains, mcp__plugin_study_study__graph_merge
+tools: Read, mcp__plugin_study_study__graph_find, mcp__plugin_study_study__graph_chains, mcp__plugin_study_study__graph_merge, mcp__plugin_study_study__forget_source
 model: sonnet
 background: true
 ---
@@ -66,6 +66,10 @@ Call `graph_merge` once:
 - An error lists what to fix. Fix it and call again, at most 3 times.
 - Long notes: merge in parts of up to about 40 propositions. A later part can use the `p_` ids an earlier part returned.
 
+## Prune a notes file
+
+After the last merge of a notes file, call `forget_source` once, with `source_id` and `keep`: the `p_` values of `ids` (not the keys) and the `chain_ids`, from every merge of this run. It drops what the file vouched for at an earlier import and no longer says, and leaves the rest alone. Do this for notes only, never for a taught step, and only when every part merged: a part that still fails after 3 tries, or a file that reads as empty, is more often a failed read than an emptied file, so leave the graph as it is.
+
 ## Result
 
 Your final message is one line and nothing else, with the counts from `graph_merge` (summed over every part):
@@ -74,4 +78,6 @@ Your final message is one line and nothing else, with the counts from `graph_mer
 <step id or source id>: <n> propositions added, <n> linked to existing ideas, <n> chains added
 ```
 
-With nothing worth adding: `<step id or source id>: nothing to add`. If the merge still fails after 3 tries: `<step id or source id>: merge failed - <the error>`.
+For a notes file, add `, <n> stale removed` with the `removed` propositions plus chains from `forget_source`.
+
+With nothing worth adding: `<step id or source id>: nothing to add`, plus the stale count for a notes file. If the merge still fails after 3 tries: `<step id or source id>: merge failed - <the error>`.
