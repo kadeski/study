@@ -112,7 +112,8 @@ def _exclusive(handle, path):
         try:
             os.mkdir(lock)
             break
-        except FileExistsError:
+        except (FileExistsError, PermissionError):
+            # Windows answers PermissionError while another process is still removing the lock.
             if time.time() > deadline:
                 raise StoreError(f"{path} is locked; delete {lock} if no Study process is running")
             time.sleep(0.02)
