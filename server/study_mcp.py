@@ -159,7 +159,8 @@ TOOLS = [
     ("pose_question",
      "Commit a graded question before asking it (probe, predict or check; ungraded questions never "
      "come here). Multiple choice: 2 to 4 options and a key of labels from them; the server adds "
-     "\"I don't know\" when there is room, shuffles, and returns the options to ask in that order. "
+     "\"I don't know\" when there is room, shuffles, and returns the options in that order and as "
+     "lettered choices to end the message with. "
      "Free text: free_text true, no options, and a key holding the model answer. Closes any open "
      "question of this session as skipped.",
      {
@@ -837,6 +838,9 @@ class Server:
                     problems.append(f"leave {store.IDK!r} out of options: the server adds it")
                 elif label.casefold() in seen:
                     problems.append(f"option {label!r} is listed twice")
+                elif store.CHOICE_LETTER.fullmatch(label):
+                    problems.append(f"option {label!r} reads like a choice letter, and the learner answers "
+                                    "with letters: reword it")
                 elif multi and ", " in label:
                     problems.append(f"option {label!r} holds \", \", which joins the picks of a multi-select "
                                     "answer: reword it without the comma")
@@ -882,6 +886,7 @@ class Server:
         out = {"question_id": question_id}
         if labels is not None:
             out["options"] = labels
+            out["choices"] = store.choices(labels)
         out.update(result)
         return out
 

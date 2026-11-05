@@ -433,24 +433,40 @@ class QuestionTest(ServerTest):
 
     def test_options_shuffled_with_i_dont_know(self):
         gid, log_id = self.planned()
-        out = self.ok("pose_question", **self.mc(options=["A", "B", "C"], key=["A", "C"], multi=True))
+        out = self.ok("pose_question", **self.mc(options=["Ay", "Be", "Ce"], key=["Ay", "Ce"], multi=True))
         self.assertEqual(out["question_id"], "q1")
-        self.assertEqual(sorted(out["options"]), sorted(["A", "B", "C", store.IDK]))
+        self.assertEqual(sorted(out["options"]), sorted(["Ay", "Be", "Ce", store.IDK]))
+        self.assertEqual(out["choices"], [f"{letter}. {label}" for letter, label in zip("ABCD", out["options"])])
         entry = self.log(gid, log_id)[-1]
         self.assertEqual(entry["type"], "question")
         self.assertEqual((entry["options"], entry["key"], entry["multi"], entry["freeText"]),
-                         (out["options"], ["A", "C"], True, False))
+                         (out["options"], ["Ay", "Ce"], True, False))
         self.assertEqual(entry["explanation"], "Both sides must change the same way.")
         self.assertEqual(list(entry)[:3], ["n", "at", "type"])
-        four = self.ok("pose_question", **self.mc(options=["A", "B", "C", "D"], key=["B"]))
-        self.assertEqual(sorted(four["options"]), ["A", "B", "C", "D"])
-        orders = {tuple(self.ok("pose_question", **self.mc(options=["A", "B", "C", "D"], key=["B"]))["options"])
+        four = self.ok("pose_question", **self.mc(options=["w", "x", "y", "z"], key=["x"]))
+        self.assertEqual(sorted(four["options"]), ["w", "x", "y", "z"])
+        orders = {tuple(self.ok("pose_question", **self.mc(options=["w", "x", "y", "z"], key=["x"]))["options"])
                   for _ in range(30)}
         self.assertGreater(len(orders), 1)
 
     def test_single_key_may_be_multi(self):
         self.planned()
-        self.ok("pose_question", **self.mc(options=["A", "B", "C"], key=["A"], multi=True))
+        self.ok("pose_question", **self.mc(options=["Ay", "Be", "Ce"], key=["Ay"], multi=True))
+
+    def test_option_like_a_choice_letter_is_refused(self):
+        self.planned()
+        for label in ("A", "b", "C.", "d)", "(a)"):
+            with self.subTest(label=label):
+                error = self.bad("pose_question", **self.mc(options=[label, "Subtract 2 from both sides"]))
+                self.assertIn(f"option {label!r} reads like a choice letter", error)
+        self.ok("pose_question", **self.mc(options=["E", "A and B", "Subtract 2 from both sides"],
+                                           key=["Subtract 2 from both sides"]))
+
+    def test_free_text_has_no_choices(self):
+        self.planned()
+        out = self.ok("pose_question", session_id=SID, kind="check", step_id="s1", question="Why?",
+                      free_text=True, explanation="e", key=["Because both sides change alike"])
+        self.assertNotIn("choices", out)
 
     def test_second_question_closes_the_first(self):
         gid, log_id = self.planned()

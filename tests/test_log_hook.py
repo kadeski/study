@@ -419,10 +419,56 @@ class PromptTest(HookTest):
         self.silent("prompt", fixture("user_prompt_submit.json"))
         self.assertEqual([e["type"] for e in self.entries(after="start")], ["learner"])
 
-    def test_open_multiple_choice_question_is_not_linked(self):
+    def chat(self, prompt):
+        return self.context("prompt", dict(fixture("user_prompt_submit.json"), prompt=prompt), "UserPromptSubmit")
+
+    def test_multiple_choice_letter_in_chat_is_graded_by_code(self):
+        # CHECK_OPTIONS: A. the + 3, B. the 2x, C. the = 11, D. I don't know
+        for qid, prompt, verdict, picked in (
+            ("q1", "a", "right", "the + 3"), ("q2", " B. ", "wrong", "the 2x"), ("q3", "(c)", "wrong", "the = 11"),
+            ("q4", "d)", "dontKnow", store.IDK), ("q5", "The + 3", "right", "the + 3"),
+            ("q6", "i don't know", "dontKnow", store.IDK),
+        ):
+            with self.subTest(prompt=prompt):
+                self.question(qid)
+                self.assertEqual(self.chat(prompt), f'{qid}: {verdict} (picked "{picked}"; key "the + 3")')
+                self.assertEqual(self.entries(), [
+                    {"type": "learner", "text": prompt},
+                    {"type": "answer", "question": qid, "picked": [picked], "other": None, "notes": None,
+                     "freeText": None},
+                    {"type": "verdict", "question": qid, "verdict": verdict, "by": "code"},
+                ])
+
+    def test_multiple_choice_in_chat_anything_else_goes_to_the_teacher(self):
+        for n, prompt in enumerate(("A because the 3 was added last", "a dict never changes", "E",
+                                    "why is that?", "A, B"), start=1):
+            with self.subTest(prompt=prompt):
+                qid = f"q{n}"
+                self.question(qid)
+                self.assertEqual(self.chat(prompt), f"{qid}: answer in the learner's words, grade it with record_verdict")
+                self.assertEqual(self.entries()[-1], {"type": "answer", "question": qid, "picked": [],
+                                                      "other": prompt, "notes": None, "freeText": None})
+                self.assertEqual([q["id"] for q in store.ungraded(self.s.read_log(GOAL, LOG))], [qid])
+                self.s.append_log(GOAL, LOG, {"type": "verdict", "question": qid, "verdict": "wrong", "by": "teacher"})
+
+    def test_multi_select_in_chat(self):
+        self.question("q1", key=("the + 3", "the 2x"))
+        self.assertEqual(self.chat("b, A"), 'q1: right (picked "the 2x", "the + 3"; key "the + 3", "the 2x")')
+        self.question("q2", key=("the + 3", "the 2x"))
+        self.assertEqual(self.chat("A"), 'q2: partly (picked "the + 3"; key "the + 3", "the 2x")')
+        self.question("q3", key=("the + 3", "the 2x"))
+        self.assertIn("grade it with record_verdict", self.chat("A, and B"))
+
+    def test_only_the_first_chat_answer_to_multiple_choice_is_linked(self):
         self.question("q1")
-        self.silent("prompt", fixture("user_prompt_submit.json"))
-        self.assertEqual([e["type"] for e in self.entries()], ["learner"])
+        self.chat("A")
+        self.silent("prompt", dict(fixture("user_prompt_submit.json"), prompt="B"))
+        self.assertEqual([e["type"] for e in self.entries()], ["learner", "answer", "verdict", "learner"])
+
+    def test_slash_command_never_answers_multiple_choice(self):
+        self.question("q1")
+        self.silent("prompt", dict(fixture("user_prompt_submit.json"), prompt="/study stop"))
+        self.assertEqual(self.entries(), [{"type": "learner", "text": "/study stop"}])
 
     def test_task_notification_is_ignored(self):
         self.free_question("q1")

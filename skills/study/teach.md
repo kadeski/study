@@ -40,6 +40,7 @@ Move past a step when its claim is obvious to the learner: the latest check on i
 ## Messages
 
 - One move per message, ending with its question. A few sentences of teaching, not a page.
+- The message is the turn's last thing. Make the turn's tool calls first (`pose_question`, `record_verdict`, task updates, helpers), then write the verdict, the move and the question as one message (`questions.md`, "Tools first, then one message"). Teaching written before a tool call can reach the learner as a one-line summary.
 - Use the same word for the same thing every time. To a learner, a new word is a new idea.
 - Use the learner's words for things where they are right.
 - If the learner says how they like to learn (more examples, shorter steps, a picture first), do that.

@@ -4,7 +4,9 @@
 
 - answer (PostToolUse, AskUserQuestion): logs the graded answer, grades multiple choice with code,
   and logs every other answered question as an `ask` entry.
-- prompt (UserPromptSubmit): logs the learner's words and links them to an open free-text question.
+- prompt (UserPromptSubmit): logs the learner's words and links them to the open question: a
+  free-text one for the teacher to grade, or a multiple-choice one asked in chat, graded by code
+  when the message is exactly a letter or a label.
 - compact (SessionStart, compact): says where the lesson is and which phase file to reread.
 
 Every Claude Code session with the plugin enabled runs it, so it exits with no output before
@@ -231,8 +233,11 @@ def on_answer(s, store, marker, data, raw):
     return "\n".join(messages) or None
 
 
-def log_graded(s, store, goal, log, question, answer, picked, other, note):
-    """Writes the `answer` entry and, for a picked option, the code's `verdict`. Returns the message."""
+def log_graded(s, store, goal, log, question, answer, picked, other, note, in_chat=False):
+    """Writes the `answer` entry and, for a picked option, the code's `verdict`. Returns the message.
+
+    `in_chat`: the answer came as a chat message, not through AskUserQuestion.
+    """
     qid = question["id"]
     free = is_free(question)
     s.append_log(goal, log, {
@@ -240,6 +245,8 @@ def log_graded(s, store, goal, log, question, answer, picked, other, note):
         "notes": note, "freeText": answer if free else None,
     })
     if free or other is not None:
+        if in_chat:
+            return f"{qid}: answer in the learner's words, grade it with record_verdict"
         return f"{qid}: free-text answer via Other, grade it with record_verdict"
     verdict = store.grade(question, picked)
     s.append_log(goal, log, {"type": "verdict", "question": qid, "verdict": verdict, "by": "code"})
@@ -273,8 +280,14 @@ def on_prompt(s, store, marker, data, raw):
     goal, log = marker.get("goal"), marker["log"]
     open_q = store.open_question(s.read_log(goal, log))
     s.append_log(goal, log, {"type": "learner", "text": prompt})
-    if open_q is None or not is_free(open_q) or is_command(prompt):
+    if open_q is None or is_command(prompt):
         return None
+    if not is_free(open_q):
+        # Multiple choice asked in chat: the message is the answer.
+        options = open_q.get("options") or []
+        picked = store.pick_in_chat(prompt, options, bool(open_q.get("multi")))
+        other = None if picked is not None else prompt
+        return log_graded(s, store, goal, log, open_q, prompt, picked or [], other, None, in_chat=True)
     s.append_log(goal, log, {
         "type": "answer", "question": open_q["id"], "picked": None, "other": None,
         "notes": None, "freeText": prompt,

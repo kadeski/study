@@ -12,7 +12,7 @@ It rebuilds the method of [LearnHarness](https://github.com/amosblomqvist/learnh
 |---|---|
 | Home | Its own repository, kadeski/study, with the plugin at the root. Claude-only: listed in the kadeski marketplace (kadeski/skills) and the Anthropic plugin directory. |
 | License | MIT. Method and ideas from LearnHarness, no copied text or code. |
-| Question UI | The normal chat plus AskUserQuestion. Works in the terminal, the desktop app and VS Code. |
+| Question UI | The normal chat, for every graded question. AskUserQuestion for ungraded asks only. Works in the terminal, the desktop app and VS Code. |
 | v1 scope | Probe, plan, teach; knowledge graph; practice; background helpers (research, PDF, visual, demo). |
 | Unit of learning | A goal that spans sessions. `/study <goal>` starts a goal or continues an unfinished one. |
 | Teacher | Skills loaded into a normal session, not a main-thread agent. |
@@ -36,8 +36,8 @@ It rebuilds the method of [LearnHarness](https://github.com/amosblomqvist/learnh
 
 These were not discussed. Change any of them before building.
 
-- One graded question per AskUserQuestion call, to keep one step, one check.
-- Free-text questions are asked in plain chat, because AskUserQuestion needs 2 to 4 options.
+- One graded question per message, to keep one step, one check.
+- Every turn makes its tool calls first and ends with one message. Prose before a tool call can reach the learner as a one-line summary, and the AskUserQuestion dialog renders no markdown, so graded questions are asked in chat, multiple choice with lettered choices (`issue-1.md`).
 - No confidence question. It adds a step to every answer. No app sends notes on an answer (`checks.md`), so the teacher asks for the learner's thinking in chat when it matters instead.
 - The server shuffles multiple-choice options and adds "I don't know" when there is room.
 - A SessionStart hook with matcher `compact` puts the current goal, phase and open question back after compaction.
@@ -281,9 +281,9 @@ Model-invocable and read-only. Its description says when to use it: when an answ
 | Kind | When | Graded | Asked with |
 |---|---|---|---|
 | `ask` | Any phase: goal, preferences, plan changes | No | AskUserQuestion; may group up to 4 |
-| `probe` | Probe | Yes | AskUserQuestion, or chat for free text |
-| `predict` | Before a step | Yes | AskUserQuestion |
-| `check` | After a step | Yes | AskUserQuestion, or chat for free text |
+| `probe` | Probe | Yes | Chat |
+| `predict` | Before a step | Yes | Chat |
+| `check` | After a step | Yes | Chat |
 
 `predict` and `check` must name a plan step. `probe` and `ask` must not.
 
@@ -292,13 +292,15 @@ Model-invocable and read-only. Its description says when to use it: when an answ
 1. `pose_question({session_id, kind, step_id, question, options, key, multi, explanation})`. The explanation comes before the key in the schema, so the reasoning is written first. The server checks that:
    - every key is one of the options
    - `multi` is true when there are several keys
-   - the options are 2 to 4 distinct, non-empty labels
+   - the options are 2 to 4 distinct, non-empty labels, none of which looks like a choice letter
    - `step_id` exists for `predict` and `check`
-   It adds "I don't know" when there are 3 or fewer options, shuffles the options and returns `{question_id, options}`. A question still unanswered in this session is closed as `skipped`.
-2. The teacher calls AskUserQuestion with that question and the options in the returned order. Typing in "Other" counts as a free-text answer.
-3. The PostToolUse hook logs the answer. A picked option is graded by code against the key. The hook returns `additionalContext` with the verdict, for example `q7: wrong (picked "B-side"; key "A-side")`.
-4. For an "Other" answer, the teacher grades it and calls `record_verdict`.
+   It adds "I don't know" when there are 3 or fewer options, shuffles the options and returns `{question_id, options, choices}`, where `choices` are the options as lettered lines (`A. 15`). A question still unanswered in this session is closed as `skipped`.
+2. The teacher ends the turn's one message with the question and the `choices`, in the returned order.
+3. The UserPromptSubmit hook links the learner's reply to the question. A reply that is exactly a letter or an option is graded by code against the key, and the hook returns `additionalContext` with the verdict, for example `q7: wrong (picked "B-side"; key "A-side")`.
+4. Any other reply, such as a letter with reasoning, the teacher grades and calls `record_verdict`.
 5. The teacher gives the verdict plainly, then repairs or moves on.
+
+A graded question asked through AskUserQuestion, by a lesson begun before 1.0.3, still grades through the PostToolUse hook.
 
 ### A graded free-text question
 
@@ -321,7 +323,7 @@ When AskUserQuestion's `kind: "text"` ships (it is in the 2.1.308 build's tool t
   - Prints `additionalContext`.
 - **prompt:**
   - Appends a `learner` entry with the text.
-  - If a free-text question is open, also appends an `answer` entry linked to it and prints `additionalContext`.
+  - If a question is open, also appends an `answer` entry linked to it and prints `additionalContext`. A multiple-choice answer that is exactly a letter or an option also gets a `verdict` entry with `by: "code"`.
 - **compact:** prints `additionalContext` with the goal, the phase, the current step, any open question, and which phase file to reread.
 - It never blocks. It always exits 0, and errors go to stderr and `<data>/errors.log`.
 - The data folder comes from `CLAUDE_PLUGIN_OPTION_DATA_DIR`, else `~/Study`.

@@ -53,11 +53,11 @@ Additions to spec section 9: `session_id` on `save_probe`, `save_plan`, `finish_
 - `finish_goal({session_id, goal_id, note})`: status `done`, `doneAt` now, logs `end` with `note`, deletes the marker. Returns `{"goal": <goal.json>}`.
 - `pose_question({session_id, kind, step_id?, question, options?, explanation, key, multi?, free_text?})`, properties in this order so the explanation is written before the key.
   - `kind` is `probe`, `predict` or `check`. Ungraded `ask` questions never come here; the hook logs them.
-  - Multiple choice: `options` 2 to 4 distinct non-empty labels, never "I don't know"; `key` a list of labels from `options`; `multi` true when the key has several (a `multi` question may have one key). The server adds "I don't know" (`store.IDK`) when there are 3 or fewer options, then shuffles.
+  - Multiple choice: `options` 2 to 4 distinct non-empty labels, never "I don't know", and never one that matches `store.CHOICE_LETTER` (`A`, `b.`, `c)`, `(d)`); `key` a list of labels from `options`; `multi` true when the key has several (a `multi` question may have one key). The server adds "I don't know" (`store.IDK`) when there are 3 or fewer options, then shuffles.
   - Free text: `free_text: true`, no `options`, `key` a one-item list holding the model answer.
   - The question entry stores the final shuffled `options` and `key` as a list.
   - Closes any open question of this log as `skipped` (a `verdict` entry, `by: "server"`). The first question with a step sets the goal's status to `teaching`.
-  - Returns `{"question_id": "q3", "options": [...]}` (no `options` for free text), plus `"closed": "q2"` when it closed one. Question ids are `q<n>`, numbered per log.
+  - Returns `{"question_id": "q3", "options": [...], "choices": ["A. ...", ...]}` (no `options` or `choices` for free text), plus `"closed": "q2"` when it closed one. `choices` are `store.choices(options)`: the options in order, lettered from A. Question ids are `q<n>`, numbered per log.
 - `record_verdict({session_id, question_id, verdict, note?})`: `verdict` is `right`, `partly`, `wrong` or `dontKnow`. Logs a `verdict` entry with `by: "teacher"`. Returns `{"question_id", "verdict"}`.
 - `record_answer({session_id, question_id, text})`: logs an `answer` entry (`freeText: text`). Returns `{"question_id"}`.
 - `commit_problem({session_id, statement, mode, targets, cue_class, solution})`: `mode` is `recall`, `discrimination` or `composition`; `targets` are existing proposition or chain ids; `cue_class` is `near`, `far` or `bare` (the practice skill's values; the server takes any short text). Refused while this log has an open problem. Writes the `commit` line and a `problem` entry. Returns `{"problem_id": "pr_x7k2"}`.
@@ -80,7 +80,7 @@ The full MCP tool names are `mcp__plugin_study_study__<tool>`.
 Spec section 8 holds, with these additions:
 
 - `verdict`'s `by` may be `server` (a question closed as `skipped`).
-- `answer` always has `picked`, `other`, `notes` and `freeText`. Entries written before confidence was dropped may also carry `confidence`; nothing reads it. From AskUserQuestion, `picked` is a list of labels (empty for an "Other" answer); for a free-text answer linked from a prompt or given through `record_answer`, `picked` is null and the text is in `freeText`.
+- `answer` always has `picked`, `other`, `notes` and `freeText`. Entries written before confidence was dropped may also carry `confidence`; nothing reads it. From AskUserQuestion, or a chat answer to a multiple-choice question, `picked` is a list of labels (empty for an "Other" answer or a chat answer code can't read, whose text is in `other`); for a free-text answer linked from a prompt or given through `record_answer`, `picked` is null and the text is in `freeText`.
 - `end` may carry `note` (from `finish_goal`).
 - `extracted` is logged in the origin's session log for a step origin, with `propositions` and `chains` as the lists of ids the merge touched; a source origin logs nothing.
 - Practice: `problem` is `{problem}` (the problem id) and `conclude` is `{problem, outcome, verdict}`. Lines in `practice/problems.jsonl` carry `type` (`commit` or `conclude`) and `at`.
@@ -133,11 +133,14 @@ Read `answers` and `annotations` from `tool_input`, else from `tool_response` (a
 
 Matching: the graded question is the open question whose `question` text equals the asked question's text (whitespace trimmed).
 
+Multiple choice in chat (prompt hook): the learner's next message is the answer to an open multiple-choice question. `store.pick_in_chat(text, options, multi)` reads it. Code grades only a message that is exactly one letter (`b`, `B.`, `b)`, `(b)`, any case, for the option at that place) or one option label (case and outer spaces ignored), or for a `multi` question a comma-separated list of those. Anything else is logged with `picked: []` and `other` holding the text, for the teacher to grade. A wrong code verdict can't be fixed, since `record_verdict` refuses a question code graded, so the rule stays narrow.
+
 Messages:
 
 - Multiple choice, graded by code: `q7: wrong (picked "B-side"; key "A-side")`. Several labels: `picked "A", "B"; key "A", "C"`.
 - "Other" text on a graded question: `q7: free-text answer via Other, grade it with record_verdict`.
 - Free-text answer in chat (prompt hook): `q9: free-text answer linked, grade it with record_verdict`.
+- Multiple-choice answer in chat, graded by code: the same as the first line above. Otherwise: `q7: answer in the learner's words, grade it with record_verdict`.
 - Compact (study): `Study is on. Goal "<title>" (<goal id>), phase <status>, current step <id> "<title>"[, open question q3 "<text>"]. Reread <phase file> before going on.` Practice: `Study practice is on (log <id>)[, open problem pr_x]. Reread skills/practice/method.md before going on.`
 - Phase files, given as absolute paths under the plugin root: `probing` = `skills/study/probe.md` and `skills/study/questions.md`, `planning` = `skills/study/plan.md`, `teaching` = `skills/study/teach.md` and `skills/study/questions.md`, any other status = `skills/study/SKILL.md`. The current step part is left out while no question has a step.
 

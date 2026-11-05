@@ -30,6 +30,9 @@ FORMAT = 1
 MARKER_TTL = 24 * 3600
 DEFAULT_DATA_DIR = "~/Study"
 IDK = "I don't know"
+# A multiple-choice question is asked in chat with lettered choices, and the learner may answer
+# with the letter: "b", "B.", "b)" or "(b)". No option label may look like one.
+CHOICE_LETTER = re.compile(r"\(([A-Da-d])\)|([A-Da-d])[.)]?")
 VERDICTS = ("right", "partly", "wrong", "dontKnow", "skipped")
 
 _ALPHABET = string.ascii_lowercase + string.digits
@@ -465,6 +468,45 @@ def step_statuses(plan, entries):
         statuses[s] = "visited"
     statuses[current] = "current"
     return statuses
+
+
+def choices(options):
+    """The options as the lettered lines a question is asked with: ["A. 15", "B. 5", ...]."""
+    return [f"{chr(ord('A') + i)}. {label}" for i, label in enumerate(options)]
+
+
+def pick_in_chat(text, options, multi):
+    """The option labels a chat answer picks, or None when code can't tell.
+
+    Only an exact answer counts: one letter (`b`, `B.`, `b)`, `(b)`) or one label, ignoring case
+    and outer spaces; for a `multi` question also a comma-separated list of those. Anything else,
+    reasoning included, is for the teacher to grade: a wrong code verdict can't be undone.
+    """
+    def one(part):
+        part = part.strip()
+        for label in options:
+            if part.casefold() == label.strip().casefold():
+                return label
+        m = CHOICE_LETTER.fullmatch(part)
+        if m:
+            index = ord((m.group(1) or m.group(2)).upper()) - ord("A")
+            if index < len(options):
+                return options[index]
+        return None
+
+    whole = one(text)
+    if whole is not None:
+        return [whole]
+    if not multi or "," not in text:
+        return None
+    picks = []
+    for part in text.split(","):
+        label = one(part)
+        if label is None:
+            return None
+        if label not in picks:
+            picks.append(label)
+    return picks
 
 
 def grade(question, picked):

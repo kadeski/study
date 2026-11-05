@@ -21,6 +21,19 @@ Other findings:
 - Claude Code 2.1.310 first sends `server/discover` (the newest MCP spec has no `initialize`), gets `-32601` from our server, then falls back to `initialize` at `2025-11-25`. The server keeps the `initialize` handshake.
 - Placeholders such as `${CLAUDE_SESSION_ID}` and `${CLAUDE_PLUGIN_ROOT}` are filled in only in `SKILL.md`, not in files a skill reads later, so each `SKILL.md` states both values once.
 
+## Summarized prose and the question dialog
+
+Run by hand on 2026-11-05 in the terminal (Claude Code 2.1.318, Windows, auto mode) with study 1.0.1, for kadeski/study#1 (`issue-1.md`). One teach -> `pose_question` -> AskUserQuestion turn per output style.
+
+- Claude Code sends `thinking.display: "updates"` by default (off with `showThinkingSummaries: true` or `CLAUDE_CODE_THINKING_DISPLAY_UPDATES=0`). The server may then return prose that comes before a tool call as a thinking block tagged `narration`, holding a summary. The terminal shows it as one line marked "summarized".
+- **Concise output style:** the teaching (a code block and a table) came back as a `narration` summary. Neither the screen nor the transcript file holds the full text. Short status lines before tool calls stayed text.
+- **Default output style:** the same turn came back as text and rendered in full. The request carried the same `display` value, so the server chooses, and the output style feeds the choice. One run per style.
+- The last message of a turn, after the last tool call, is never summarized.
+- The AskUserQuestion dialog renders no markdown in its `question` field: code blocks, inline code and tables show as raw text.
+- ctrl+o shows every tool input in plain text, `pose_question`'s `key` and `explanation` included.
+
+Decision: every turn makes its tool calls first and ends with one message; graded questions are asked in chat, multiple choice with lettered choices the prompt hook grades; AskUserQuestion carries only ungraded asks, in plain text.
+
 ## Hand check
 
 Run by a person on 2026-11-01, in the desktop app's Code tab and in the terminal (Claude Code 2.1.314), with a temporary PostToolUse hook logging the raw AskUserQuestion input. One call asked for a note on a picked option, two picks on a multi-select question, and an "Other" answer.
